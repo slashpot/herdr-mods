@@ -3,17 +3,22 @@
 //
 // The UI only knows the track shape below; where it comes from is a backend
 // per OS. macOS is the only backend so far: MediaRemote through /usr/bin/perl
-// (see native/nowplaying.m). Track:
-//   { title, artist, album, app, bundle, duration, elapsed, rate, timestamp, art }
+// (see native/nowplaying.m). A backend's get() returns every app that has a
+// session, plus the one the OS elected:
+//   { elected: bundle | null, sessions: Track[] }
+//   Track = { title, artist, album, app, bundle, duration, elapsed, rate, timestamp, art, id }
+// The block shows current(): the session the person picked (shared PIN, so
+// every copy agrees), else the elected one, else one that is playing.
 
 import { View, div, image, svg } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
-import { exec, theme, appHome, window, layout } from "herdr";
+import { exec, theme, appHome, window, layout, shared, setShared } from "herdr";
 
 const MOD = "mods/now-playing";
 const ART_DIR = "data/now-playing"; // under appHome(); image() paths are relative to it
 const POLL_MS = 1500;
 const COMMAND = { play: 0, pause: 1, toggle: 2, next: 4, previous: 5 };
+const PIN = "now-playing.pinned";
 
 function find(node, id) {
   if (node?.id === id) return node;
@@ -37,8 +42,8 @@ const macos = {
     if (r.code !== 0) throw new Error(r.stderr.trim() || `exit ${r.code}`);
     return JSON.parse(r.stdout);
   },
-  async send(command) {
-    await exec("/usr/bin/perl", this.args("send", String(COMMAND[command])));
+  async send(command, bundle) {
+    await exec("/usr/bin/perl", this.args("send", String(COMMAND[command]), ...(bundle ? [bundle] : [])));
   },
   async activate(track) {
     if (track?.bundle) await exec("open", ["-b", track.bundle]);
@@ -61,7 +66,8 @@ function clock(seconds) {
 
 export default class NowPlaying extends View {
   init(_props, cx) {
-    this.track = null;
+    this.sessions = [];
+    this.elected = null;
     this.error = null;
     this.loading = true;
     this.backend = window()?.platform === "macos" ? macos : null;
@@ -69,7 +75,12 @@ export default class NowPlaying extends View {
     this.refresh(cx);
     cx.timer.every(POLL_MS, (cx) => this.refresh(cx));
     // Moves the progress bar between polls; nothing to redraw while paused.
-    cx.timer.every(1000, (cx) => { if (this.track?.rate) cx.notify(); });
+    cx.timer.every(1000, (cx) => { if (this.current()?.rate) cx.notify(); });
+  }
+
+  current() {
+    const find = (bundle) => bundle && this.sessions.find((s) => s.bundle === bundle);
+    return find(shared(PIN)) ?? find(this.elected) ?? this.sessions.find((s) => s.rate > 0) ?? this.sessions[0] ?? null;
   }
 
   refresh(cx) {
@@ -77,12 +88,19 @@ export default class NowPlaying extends View {
     this.busy = true;
     cx.spawn(async (cx) => {
       try {
-        const next = await this.backend.get();
+        const { elected, sessions } = await this.backend.get();
+        const last = new Map(this.sessions.map((s) => [s.bundle, s]));
         // Artwork lands a second or two after a track change: keep the last
         // picture while it's the same track, rather than flashing the placeholder.
-        if (next && !next.art && sameTrack(next, this.track)) next.art = this.track.art;
-        this.track = next;
+        for (const s of sessions) {
+          const before = last.get(s.bundle);
+          if (!s.art && sameTrack(s, before)) s.art = before.art;
+        }
+        this.sessions = sessions;
+        this.elected = elected;
         this.error = null;
+        const pinned = shared(PIN);
+        if (pinned && !sessions.some((s) => s.bundle === pinned)) setShared(PIN, null);
       } catch (e) {
         this.error = String(e?.message ?? e);
       }
@@ -93,14 +111,16 @@ export default class NowPlaying extends View {
   }
 
   command(name, cx) {
+    const target = this.current();
     // Answer the click at once; the next read confirms it.
-    if (this.track && (name === "toggle" || name === "play" || name === "pause")) {
-      const playing = name === "toggle" ? !this.track.rate : name === "play";
-      this.track = { ...this.track, elapsed: position(this.track), timestamp: Date.now() / 1000, rate: playing ? 1 : 0 };
+    if (target && (name === "toggle" || name === "play" || name === "pause")) {
+      const playing = name === "toggle" ? !target.rate : name === "play";
+      const flipped = { ...target, elapsed: position(target), timestamp: Date.now() / 1000, rate: playing ? 1 : 0 };
+      this.sessions = this.sessions.map((s) => (s === target ? flipped : s));
       cx.notify();
     }
     cx.spawn(async (cx) => {
-      await this.backend.send(name);
+      await this.backend.send(name, target?.bundle);
       cx.timer.after(400, (cx) => this.refresh(cx));
     });
   }
@@ -116,7 +136,7 @@ export default class NowPlaying extends View {
 
   artwork(size) {
     const t = theme();
-    const track = this.track;
+    const track = this.current();
     return div().id("art").size(size).flex_none().rounded(6).overflow_hidden().bg(t.hover)
       .flex().items_center().justify_center().text_color(t.dim)
       .when(Boolean(track?.bundle), (el) => el.cursor_pointer()
@@ -136,9 +156,9 @@ export default class NowPlaying extends View {
     const t = theme();
     if (!this.backend) return this.message("Now Playing supports macOS only for now");
     if (this.error) return this.message(`Now Playing: ${this.error}`);
-    if (!this.track) return this.message(this.loading ? "" : "Nothing playing");
+    const track = this.current();
+    if (!track) return this.message(this.loading ? "" : "Nothing playing");
 
-    const track = this.track;
     const playing = Boolean(track.rate);
     const toggle = this.button("toggle", playing ? "pause" : "play", 16, "toggle");
 

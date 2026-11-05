@@ -1,4 +1,4 @@
-// nowplaying: read and control the system "Now Playing" session on macOS.
+// nowplaying: read and control the system "Now Playing" sessions on macOS.
 //
 // Since macOS 15.4 the private MediaRemote framework only answers processes
 // Apple has entitled. /usr/bin/perl is one of them, so this library is loaded
@@ -9,18 +9,28 @@
 // never has to touch perl's calling convention:
 //   NP_CMD      get | send
 //   NP_ARG      send: MRCommand id (0 play, 1 pause, 2 toggle, 4 next, 5 previous)
-//   NP_ART_DIR  get: folder the artwork is written to (only the current file is kept)
+//   NP_BUNDLE   send: the client to target; empty sends to whatever macOS elected
+//   NP_ART_DIR  get: folder the artwork is written to, one file per session
 //
-// Output: one line of JSON on stdout. `get` prints null when nothing is playing.
+// Output: one line of JSON on stdout.
+//   get   { "elected": bundle | null, "sessions": [Track, ...] }, one Track per client with a title
+//   send  true | false
 
 #import <AppKit/AppKit.h>
 #import <CommonCrypto/CommonDigest.h>
 #import <Foundation/Foundation.h>
 #include <dlfcn.h>
 
-typedef void (*GetInfoFn)(dispatch_queue_t, void (^)(NSDictionary *));
+typedef void (*GetClientsFn)(dispatch_queue_t, void (^)(NSArray *));
+typedef id (*ClientGetFn)(id);
+typedef int (*ClientGetPidFn)(id);
+typedef id (*GetOriginFn)(void);
+typedef id (*PathCreateFn)(id origin, id client, id player);
+typedef void (*GetInfoForPlayerFn)(id path, BOOL wantArtwork, dispatch_queue_t, void (^)(NSDictionary *));
 typedef void (*GetPidFn)(dispatch_queue_t, void (^)(int));
 typedef Boolean (*SendFn)(int, NSDictionary *);
+typedef void (*SendToPlayerFn)(unsigned cmd, NSDictionary *options, id path, unsigned appOptions,
+                               dispatch_queue_t, void (^)(unsigned err, NSArray *statuses));
 
 static void *mr(const char *symbol) {
     static void *handle;
@@ -51,76 +61,154 @@ static NSString *sha1Prefix(NSData *data) {
     return hex;
 }
 
-// Writes the artwork under a content-derived name, so a new picture is a new
-// path (no stale image cache), and removes the previous one. Returns the file name.
-static NSString *saveArtwork(NSData *art, NSString *mime) {
+static NSString *artFolder(void) {
     const char *dir = getenv("NP_ART_DIR");
-    if (!art.length || !dir || !*dir) return nil;
-    NSString *folder = [NSString stringWithUTF8String:dir];
+    return dir && *dir ? [NSString stringWithUTF8String:dir] : nil;
+}
+
+// A content-derived name makes a new picture a new path, so image() never
+// shows a stale cached file. The bundle prefix lets pruning keep a session's
+// last picture while its next one is still on the way. Returns the file name.
+static NSString *saveArtwork(NSString *bundle, NSData *art, NSString *mime) {
+    NSString *folder = artFolder();
+    if (!art.length || !folder) return nil;
     NSFileManager *fm = NSFileManager.defaultManager;
     [fm createDirectoryAtPath:folder withIntermediateDirectories:YES attributes:nil error:nil];
-
     NSString *ext = [mime isEqualToString:@"image/png"] ? @"png" : @"jpg";
-    NSString *name = [NSString stringWithFormat:@"%@.%@", sha1Prefix(art), ext];
+    NSString *name = [NSString stringWithFormat:@"%@-%@.%@", bundle ?: @"unknown", sha1Prefix(art), ext];
     NSString *path = [folder stringByAppendingPathComponent:name];
-    if (![fm fileExistsAtPath:path]) {
-        if (![art writeToFile:path atomically:YES]) return nil;
-        for (NSString *other in [fm contentsOfDirectoryAtPath:folder error:nil]) {
-            if (![other isEqualToString:name])
-                [fm removeItemAtPath:[folder stringByAppendingPathComponent:other] error:nil];
-        }
-    }
+    if (![fm fileExistsAtPath:path] && ![art writeToFile:path atomically:YES]) return nil;
     return name;
 }
 
-static void np_get(void) {
-    ((GetInfoFn)mr("MRMediaRemoteGetNowPlayingInfo"))(dispatch_get_main_queue(), ^(NSDictionary *info) {
-        if (!info.count || !info[@"kMRMediaRemoteNowPlayingInfoTitle"]) {
-            emit(nil);
-            exit(0);
-        }
-        NSMutableDictionary *out = [NSMutableDictionary dictionary];
-        NSDictionary *keys = @{
-            @"title" : @"kMRMediaRemoteNowPlayingInfoTitle",
-            @"artist" : @"kMRMediaRemoteNowPlayingInfoArtist",
-            @"album" : @"kMRMediaRemoteNowPlayingInfoAlbum",
-            @"duration" : @"kMRMediaRemoteNowPlayingInfoDuration",
-            @"elapsed" : @"kMRMediaRemoteNowPlayingInfoElapsedTime",
-            @"rate" : @"kMRMediaRemoteNowPlayingInfoPlaybackRate",
-            @"id" : @"kMRMediaRemoteNowPlayingInfoContentItemIdentifier",
-        };
-        for (NSString *key in keys) {
-            id value = info[keys[key]];
-            if (value) out[key] = value;
-        }
-        // elapsed is a snapshot taken at timestamp; the reader extrapolates with rate.
-        NSDate *timestamp = info[@"kMRMediaRemoteNowPlayingInfoTimestamp"];
-        if (timestamp) out[@"timestamp"] = @(timestamp.timeIntervalSince1970);
-        NSString *art = saveArtwork(info[@"kMRMediaRemoteNowPlayingInfoArtworkData"],
-                                    info[@"kMRMediaRemoteNowPlayingInfoArtworkMIMEType"]);
-        if (art) out[@"art"] = art;
+// Removes every picture no session shows, except those of a session whose
+// artwork hasn't arrived yet: the UI keeps showing that session's last one.
+static void pruneArtwork(NSArray<NSDictionary *> *sessions) {
+    NSString *folder = artFolder();
+    if (!folder) return;
+    NSMutableSet *keep = [NSMutableSet set], *waiting = [NSMutableSet set];
+    for (NSDictionary *s in sessions) {
+        if (s[@"art"]) [keep addObject:s[@"art"]];
+        else if (s[@"bundle"]) [waiting addObject:s[@"bundle"]];
+    }
+    NSFileManager *fm = NSFileManager.defaultManager;
+    for (NSString *name in [fm contentsOfDirectoryAtPath:folder error:nil]) {
+        NSRange dash = [name rangeOfString:@"-" options:NSBackwardsSearch];
+        NSString *bundle = dash.location == NSNotFound ? nil : [name substringToIndex:dash.location];
+        if ([keep containsObject:name] || (bundle && [waiting containsObject:bundle])) continue;
+        [fm removeItemAtPath:[folder stringByAppendingPathComponent:name] error:nil];
+    }
+}
 
-        ((GetPidFn)mr("MRMediaRemoteGetNowPlayingApplicationPID"))(dispatch_get_main_queue(), ^(int pid) {
-            NSRunningApplication *app = pid > 0 ? [NSRunningApplication runningApplicationWithProcessIdentifier:pid] : nil;
-            if (app.bundleIdentifier) out[@"bundle"] = app.bundleIdentifier;
-            if (app.localizedName) out[@"app"] = app.localizedName;
-            emit(out);
+static NSMutableDictionary *track(NSDictionary *info, id client) {
+    NSMutableDictionary *out = [NSMutableDictionary dictionary];
+    NSDictionary *keys = @{
+        @"title" : @"kMRMediaRemoteNowPlayingInfoTitle",
+        @"artist" : @"kMRMediaRemoteNowPlayingInfoArtist",
+        @"album" : @"kMRMediaRemoteNowPlayingInfoAlbum",
+        @"duration" : @"kMRMediaRemoteNowPlayingInfoDuration",
+        @"elapsed" : @"kMRMediaRemoteNowPlayingInfoElapsedTime",
+        @"rate" : @"kMRMediaRemoteNowPlayingInfoPlaybackRate",
+        @"id" : @"kMRMediaRemoteNowPlayingInfoContentItemIdentifier",
+    };
+    for (NSString *key in keys) {
+        id value = info[keys[key]];
+        if (value) out[key] = value;
+    }
+    // elapsed is a snapshot taken at timestamp; the reader extrapolates with rate.
+    NSDate *timestamp = info[@"kMRMediaRemoteNowPlayingInfoTimestamp"];
+    if (timestamp) out[@"timestamp"] = @(timestamp.timeIntervalSince1970);
+    NSString *bundle = ((ClientGetFn)mr("MRNowPlayingClientGetBundleIdentifier"))(client);
+    NSString *art = saveArtwork(bundle, info[@"kMRMediaRemoteNowPlayingInfoArtworkData"],
+                                info[@"kMRMediaRemoteNowPlayingInfoArtworkMIMEType"]);
+    if (art) out[@"art"] = art;
+    NSString *name = ((ClientGetFn)mr("MRNowPlayingClientGetDisplayName"))(client);
+    if (!name) {
+        int pid = ((ClientGetPidFn)mr("MRNowPlayingClientGetProcessIdentifier"))(client);
+        name = pid > 0 ? [NSRunningApplication runningApplicationWithProcessIdentifier:pid].localizedName : nil;
+    }
+    if (bundle) out[@"bundle"] = bundle;
+    if (name) out[@"app"] = name;
+    return out;
+}
+
+static id pathFor(id client) {
+    id origin = ((GetOriginFn)mr("MRMediaRemoteGetLocalOrigin"))();
+    return ((PathCreateFn)mr("MRNowPlayingPlayerPathCreate"))(origin, client, nil);
+}
+
+static void np_get(void) {
+    dispatch_queue_t q = dispatch_get_main_queue();
+    ((GetClientsFn)mr("MRMediaRemoteGetNowPlayingClients"))(q, ^(NSArray *clients) {
+        NSUInteger n = clients.count;
+        NSMutableArray *slots = [NSMutableArray arrayWithCapacity:n];
+        for (NSUInteger i = 0; i < n; i++) [slots addObject:[NSNull null]];
+        __block id elected = [NSNull null];
+        __block NSUInteger pending = n + 1;
+
+        void (^finish)(void) = ^{
+            if (--pending) return;
+            NSMutableArray *sessions = [NSMutableArray array];
+            for (id slot in slots)
+                if (slot != [NSNull null]) [sessions addObject:slot];
+            pruneArtwork(sessions);
+            emit(@{@"elected" : elected, @"sessions" : sessions});
             exit(0);
+        };
+
+        ((GetPidFn)mr("MRMediaRemoteGetNowPlayingApplicationPID"))(q, ^(int pid) {
+            for (id client in clients) {
+                if (((ClientGetPidFn)mr("MRNowPlayingClientGetProcessIdentifier"))(client) == pid)
+                    elected = ((ClientGetFn)mr("MRNowPlayingClientGetBundleIdentifier"))(client) ?: elected;
+            }
+            if (elected == [NSNull null] && pid > 0)
+                elected = [NSRunningApplication runningApplicationWithProcessIdentifier:pid].bundleIdentifier ?: elected;
+            finish();
         });
+
+        [clients enumerateObjectsUsingBlock:^(id client, NSUInteger i, BOOL *stop) {
+            ((GetInfoForPlayerFn)mr("MRMediaRemoteGetNowPlayingInfoForPlayer"))(pathFor(client), YES, q, ^(NSDictionary *info) {
+                if (info[@"kMRMediaRemoteNowPlayingInfoTitle"]) slots[i] = track(info, client);
+                finish();
+            });
+        }];
+    });
+}
+
+static void exitSoon(BOOL ok) {
+    // Give MediaRemote a moment to deliver the command before the process ends.
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 200 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{
+        exit(ok ? 0 : 1);
     });
 }
 
 static void np_send(void) {
     const char *arg = getenv("NP_ARG");
+    const char *bundle = getenv("NP_BUNDLE");
     if (!arg || !*arg) {
         fprintf(stderr, "send needs a command id\n");
         exit(2);
     }
-    Boolean ok = ((SendFn)mr("MRMediaRemoteSendCommand"))(atoi(arg), nil);
-    emit(@(ok));
-    // Give MediaRemote a moment to deliver the command before the process ends.
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 200 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{
-        exit(ok ? 0 : 1);
+    unsigned command = (unsigned)atoi(arg);
+    if (!bundle || !*bundle) {
+        Boolean ok = ((SendFn)mr("MRMediaRemoteSendCommand"))(command, nil);
+        emit(@(ok));
+        exitSoon(ok);
+        return;
+    }
+    NSString *want = [NSString stringWithUTF8String:bundle];
+    dispatch_queue_t q = dispatch_get_main_queue();
+    ((GetClientsFn)mr("MRMediaRemoteGetNowPlayingClients"))(q, ^(NSArray *clients) {
+        for (id client in clients) {
+            if (![((ClientGetFn)mr("MRNowPlayingClientGetBundleIdentifier"))(client) isEqual:want]) continue;
+            ((SendToPlayerFn)mr("MRMediaRemoteSendCommandToPlayer"))(command, nil, pathFor(client), 0, q, ^(unsigned err, NSArray *statuses) {
+                emit(@(err == 0));
+                exitSoon(err == 0);
+            });
+            return;
+        }
+        fprintf(stderr, "no now-playing session for %s\n", bundle);
+        exit(4);
     });
 }
 
