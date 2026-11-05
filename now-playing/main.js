@@ -19,6 +19,8 @@ const ART_DIR = "data/now-playing"; // under appHome(); image() paths are relati
 const POLL_MS = 1500;
 const COMMAND = { play: 0, pause: 1, toggle: 2, next: 4, previous: 5 };
 const PIN = "now-playing.pinned";
+const MARQUEE_PX_PER_S = 30;
+const MARQUEE_MIN_MS = 4000;
 
 function find(node, id) {
   if (node?.id === id) return node;
@@ -68,6 +70,7 @@ export default class NowPlaying extends View {
   init(_props, cx) {
     this.sessions = [];
     this.elected = null;
+    this.widths = new Map(); // element id -> laid-out width, for the marquee
     this.error = null;
     this.loading = true;
     this.backend = window()?.platform === "macos" ? macos : null;
@@ -125,6 +128,33 @@ export default class NowPlaying extends View {
     });
   }
 
+  measure(id) {
+    return (size, cx) => {
+      const width = Math.round(size.width);
+      if (this.widths.get(id) === width) return;
+      this.widths.set(id, width);
+      cx.notify();
+    };
+  }
+
+  // gpui-kit has no text measuring, so the clip box and the unwrapped text
+  // report their laid-out widths; text wider than its box swings to show its end.
+  marquee(id, text, style) {
+    const overflow = (this.widths.get(`${id}-text`) ?? 0) - (this.widths.get(`${id}-box`) ?? Infinity);
+    const label = style(div().id(`${id}-text`).flex_none().whitespace_nowrap().relative())
+      .on_size_change(this.measure(`${id}-text`))
+      .when(overflow > 1, (el) => el.loop("left", {
+        from: 0,
+        to: -overflow,
+        period: Math.max(MARQUEE_MIN_MS, (2000 * overflow) / MARQUEE_PX_PER_S),
+        easing: "ease-in-out",
+      }))
+      .child(text);
+    return h_flex().id(`${id}-box`).w_full().min_w(0).overflow_hidden()
+      .on_size_change(this.measure(`${id}-box`))
+      .child(label);
+  }
+
   button(id, icon, size, action) {
     const t = theme();
     return div().id(id).size(size + 12).flex_none().flex().items_center().justify_center().rounded_full()
@@ -175,8 +205,8 @@ export default class NowPlaying extends View {
       .child(h_flex().gap(10).items_center()
         .child(this.artwork(44))
         .child(v_flex().flex_1().min_w(0).gap(2)
-          .child(div().text_size(13).font_medium().text_color(t.foreground).truncate().child(track.title))
-          .child(div().text_size(12).text_color(t.muted).truncate().child(subtitle))))
+          .child(this.marquee("title", track.title, (el) => el.text_size(13).font_medium().text_color(t.foreground)))
+          .child(this.marquee("subtitle", subtitle, (el) => el.text_size(12).text_color(t.muted)))))
       .when(Boolean(track.duration), (el) => el.child(v_flex().gap(3)
         .child(div().h(3).w_full().rounded(2).bg(t.border).overflow_hidden()
           .child(div().h_full().w(pct).rounded(2).bg(t.accent)))
