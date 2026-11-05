@@ -12,7 +12,7 @@
 
 import { View, div, image, svg } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
-import { exec, theme, appHome, window, layout, shared, setShared } from "herdr";
+import { exec, theme, appHome, window, layout, shared, setShared, props, nextCommand } from "herdr";
 
 const MOD = "mods/now-playing";
 const ART_DIR = "data/now-playing"; // under appHome(); image() paths are relative to it
@@ -77,6 +77,16 @@ export default class NowPlaying extends View {
     if (!this.backend) return;
     this.refresh(cx);
     cx.timer.every(POLL_MS, (cx) => this.refresh(cx));
+    // keys.json and `herdr-app do now-playing.<command>` reach every copy of
+    // the mod; only the sidebar block answers, so a key never acts twice.
+    if (props()?.view !== "sessions") {
+      cx.spawn(async (cx) => {
+        for (;;) {
+          this.hotkey(await nextCommand(), cx);
+          cx.notify();
+        }
+      });
+    }
     // Moves the progress bar between polls; nothing to redraw while paused.
     cx.timer.every(1000, (cx) => { if (this.current()?.rate) cx.notify(); });
   }
@@ -111,6 +121,17 @@ export default class NowPlaying extends View {
       this.loading = false;
       cx.notify();
     });
+  }
+
+  hotkey(name, cx) {
+    if (name in COMMAND) this.command(name, cx);
+    else if (name === "cycle") this.cycle();
+  }
+
+  cycle() {
+    if (this.sessions.length < 2) return;
+    const at = this.sessions.indexOf(this.current());
+    setShared(PIN, this.sessions[(at + 1) % this.sessions.length].bundle);
   }
 
   command(name, cx) {
