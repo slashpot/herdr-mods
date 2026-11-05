@@ -1,0 +1,170 @@
+// Now Playing: a remote for whatever the system is playing (Apple Music,
+// Spotify, YouTube in a browser, ...), not tied to any one player.
+//
+// The UI only knows the track shape below; where it comes from is a backend
+// per OS. macOS is the only backend so far: MediaRemote through /usr/bin/perl
+// (see native/nowplaying.m). Track:
+//   { title, artist, album, app, bundle, duration, elapsed, rate, timestamp, art }
+
+import { View, div, image, svg } from "gpui-kit";
+import { h_flex, v_flex } from "gpui-base";
+import { exec, theme, appHome, window, layout } from "herdr";
+
+const MOD = "mods/now-playing";
+const ART_DIR = "data/now-playing"; // under appHome(); image() paths are relative to it
+const POLL_MS = 1500;
+const COMMAND = { play: 0, pause: 1, toggle: 2, next: 4, previous: 5 };
+
+function find(node, id) {
+  if (node?.id === id) return node;
+  for (const child of node?.children ?? []) {
+    const found = find(child, id);
+    if (found) return found;
+  }
+  return null;
+}
+
+// The sidebar collapses to a rail by width (same rule as workspace-chrome).
+const narrow = () => (find(layout(), "sidebar")?.size?.px ?? Infinity) < 160;
+
+const macos = {
+  args(...rest) {
+    const home = appHome();
+    return [`${home}/${MOD}/native/nowplaying.pl`, `${home}/${MOD}/bin/libnowplaying.dylib`, ...rest];
+  },
+  async get() {
+    const r = await exec("/usr/bin/perl", this.args("get", `${appHome()}/${ART_DIR}`));
+    if (r.code !== 0) throw new Error(r.stderr.trim() || `exit ${r.code}`);
+    return JSON.parse(r.stdout);
+  },
+  async send(command) {
+    await exec("/usr/bin/perl", this.args("send", String(COMMAND[command])));
+  },
+  async activate(track) {
+    if (track?.bundle) await exec("open", ["-b", track.bundle]);
+  },
+};
+
+const sameTrack = (a, b) => a && b && a.title === b.title && a.artist === b.artist && a.bundle === b.bundle;
+
+function position(track) {
+  if (!track?.duration) return 0;
+  const drift = track.timestamp ? (Date.now() / 1000 - track.timestamp) * (track.rate ?? 0) : 0;
+  return Math.min(track.duration, Math.max(0, (track.elapsed ?? 0) + drift));
+}
+
+function clock(seconds) {
+  const s = Math.floor(seconds);
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), r = String(s % 60).padStart(2, "0");
+  return h ? `${h}:${String(m).padStart(2, "0")}:${r}` : `${m}:${r}`;
+}
+
+export default class NowPlaying extends View {
+  init(_props, cx) {
+    this.track = null;
+    this.error = null;
+    this.loading = true;
+    this.backend = window()?.platform === "macos" ? macos : null;
+    if (!this.backend) return;
+    this.refresh(cx);
+    cx.timer.every(POLL_MS, (cx) => this.refresh(cx));
+    // Moves the progress bar between polls; nothing to redraw while paused.
+    cx.timer.every(1000, (cx) => { if (this.track?.rate) cx.notify(); });
+  }
+
+  refresh(cx) {
+    if (this.busy) return;
+    this.busy = true;
+    cx.spawn(async (cx) => {
+      try {
+        const next = await this.backend.get();
+        // Artwork lands a second or two after a track change: keep the last
+        // picture while it's the same track, rather than flashing the placeholder.
+        if (next && !next.art && sameTrack(next, this.track)) next.art = this.track.art;
+        this.track = next;
+        this.error = null;
+      } catch (e) {
+        this.error = String(e?.message ?? e);
+      }
+      this.busy = false;
+      this.loading = false;
+      cx.notify();
+    });
+  }
+
+  command(name, cx) {
+    // Answer the click at once; the next read confirms it.
+    if (this.track && (name === "toggle" || name === "play" || name === "pause")) {
+      const playing = name === "toggle" ? !this.track.rate : name === "play";
+      this.track = { ...this.track, elapsed: position(this.track), timestamp: Date.now() / 1000, rate: playing ? 1 : 0 };
+      cx.notify();
+    }
+    cx.spawn(async (cx) => {
+      await this.backend.send(name);
+      cx.timer.after(400, (cx) => this.refresh(cx));
+    });
+  }
+
+  button(id, icon, size, action) {
+    const t = theme();
+    return div().id(id).size(size + 12).flex_none().flex().items_center().justify_center().rounded_full()
+      .text_color(t.muted).cursor_pointer().hover((s) => s.bg(t.hover).text_color(t.foreground))
+      .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
+      .on_click((_e, cx) => this.command(action, cx))
+      .child(svg(`${MOD}/icons/${icon}.svg`).size(size));
+  }
+
+  artwork(size) {
+    const t = theme();
+    const track = this.track;
+    return div().id("art").size(size).flex_none().rounded(6).overflow_hidden().bg(t.hover)
+      .flex().items_center().justify_center().text_color(t.dim)
+      .when(Boolean(track?.bundle), (el) => el.cursor_pointer()
+        .on_click((_e, cx) => cx.spawn(async () => { await this.backend.activate(track); })))
+      .child(track?.art ? image(`${ART_DIR}/${track.art}`).size(size) : svg(`${MOD}/icons/music.svg`).size(size * 0.45));
+  }
+
+  message(text) {
+    const t = theme();
+    return h_flex().size_full().bg(t.chrome).border_t(1).border_color(t.border).px(12).gap(8).items_center()
+      .text_size(12).text_color(t.dim)
+      .child(svg(`${MOD}/icons/music.svg`).size(14).flex_none())
+      .when(!narrow(), (el) => el.child(div().flex_1().min_w(0).truncate().child(text)));
+  }
+
+  render() {
+    const t = theme();
+    if (!this.backend) return this.message("Now Playing supports macOS only for now");
+    if (this.error) return this.message(`Now Playing: ${this.error}`);
+    if (!this.track) return this.message(this.loading ? "" : "Nothing playing");
+
+    const track = this.track;
+    const playing = Boolean(track.rate);
+    const toggle = this.button("toggle", playing ? "pause" : "play", 16, "toggle");
+
+    if (narrow()) {
+      return v_flex().size_full().bg(t.chrome).border_t(1).border_color(t.border).py(8).gap(6).items_center()
+        .child(this.artwork(36)).child(toggle);
+    }
+
+    const at = position(track);
+    const pct = track.duration ? `${((at / track.duration) * 100).toFixed(2)}%` : "0%";
+    const subtitle = [track.artist, track.album].filter(Boolean).join(" — ") || track.app || "";
+
+    return v_flex().size_full().bg(t.chrome).border_t(1).border_color(t.border).px(12).pt(10).pb(6).gap(8)
+      .child(h_flex().gap(10).items_center()
+        .child(this.artwork(44))
+        .child(v_flex().flex_1().min_w(0).gap(2)
+          .child(div().text_size(13).font_medium().text_color(t.foreground).truncate().child(track.title))
+          .child(div().text_size(12).text_color(t.muted).truncate().child(subtitle))))
+      .when(Boolean(track.duration), (el) => el.child(v_flex().gap(3)
+        .child(div().h(3).w_full().rounded(2).bg(t.border).overflow_hidden()
+          .child(div().h_full().w(pct).rounded(2).bg(t.accent)))
+        .child(h_flex().justify_between().text_size(10).text_color(t.dim)
+          .child(div().child(clock(at))).child(div().child(clock(track.duration))))))
+      .child(h_flex().justify_center().items_center().gap(14)
+        .child(this.button("previous", "skip-back", 14, "previous"))
+        .child(toggle)
+        .child(this.button("next", "skip-forward", 14, "next")));
+  }
+}
