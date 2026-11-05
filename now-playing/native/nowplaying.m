@@ -13,7 +13,8 @@
 //   NP_ART_DIR  get: folder the artwork is written to, one file per session
 //
 // Output: one line of JSON on stdout.
-//   get   { "elected": bundle | null, "sessions": [Track, ...] }, one Track per client with a title
+//   get   { "elected": bundle | null, "sessions": [Track, ...] }, one Track per client with a title;
+//         controllable says whether the client has an active player, the only kind send can target
 //   send  true | false
 
 #import <AppKit/AppKit.h>
@@ -145,13 +146,17 @@ static void np_get(void) {
         NSMutableArray *slots = [NSMutableArray arrayWithCapacity:n];
         for (NSUInteger i = 0; i < n; i++) [slots addObject:[NSNull null]];
         __block id elected = [NSNull null];
-        __block NSUInteger pending = n + 1;
+        __block NSSet *active = [NSSet set];
+        __block NSUInteger pending = n + 2;
 
         void (^finish)(void) = ^{
             if (--pending) return;
             NSMutableArray *sessions = [NSMutableArray array];
-            for (id slot in slots)
-                if (slot != [NSNull null]) [sessions addObject:slot];
+            for (NSMutableDictionary *slot in slots) {
+                if ((id)slot == [NSNull null]) continue;
+                slot[@"controllable"] = @([active containsObject:slot[@"bundle"] ?: @""]);
+                [sessions addObject:slot];
+            }
             pruneArtwork(sessions);
             emit(@{@"elected" : elected, @"sessions" : sessions});
             exit(0);
@@ -164,6 +169,17 @@ static void np_get(void) {
             }
             if (elected == [NSNull null] && pid > 0)
                 elected = [NSRunningApplication runningApplicationWithProcessIdentifier:pid].bundleIdentifier ?: elected;
+            finish();
+        });
+
+        // Only these take a targeted command (see np_send).
+        ((GetActivePathsFn)mr("MRMediaRemoteGetActivePlayerPathsForOrigin"))(((GetOriginFn)mr("MRMediaRemoteGetLocalOrigin"))(), q, ^(NSArray *paths) {
+            NSMutableSet *bundles = [NSMutableSet set];
+            for (id path in paths) {
+                id bundle = ((ClientGetFn)mr("MRNowPlayingClientGetBundleIdentifier"))(((ClientGetFn)mr("MRNowPlayingPlayerPathGetClient"))(path));
+                if (bundle) [bundles addObject:bundle];
+            }
+            active = bundles;
             finish();
         });
 

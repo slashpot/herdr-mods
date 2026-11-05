@@ -50,7 +50,7 @@ if mode == "sessions":
     if not d["sessions"]: print("nothing playing")
     for t in d["sessions"]:
         mark = "*" if t.get("bundle") == d["elected"] else " "
-        print("%s %-24s rate %s  %s: %s" % (mark, t.get("bundle"), t.get("rate"), t.get("app"), t.get("title")))
+        print("%s %-24s rate %s  %s  %s: %s" % (mark, t.get("bundle"), t.get("rate"), "ctl" if t.get("controllable") else "---", t.get("app"), t.get("title")))
 else:
     b = want or d["elected"]
     t = next((t for t in d["sessions"] if t.get("bundle") == b), None)

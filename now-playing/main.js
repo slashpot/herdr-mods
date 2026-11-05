@@ -6,7 +6,9 @@
 // (see native/nowplaying.m). A backend's get() returns every app that has a
 // session, plus the one the OS elected:
 //   { elected: bundle | null, sessions: Track[] }
-//   Track = { title, artist, album, app, bundle, duration, elapsed, rate, timestamp, art, id }
+//   Track = { title, artist, album, app, bundle, duration, elapsed, rate, timestamp, art, id, controllable }
+// controllable is false for an app the OS lists but won't take commands for
+// (a paused browser tab that isn't the elected player): its controls are dimmed.
 // The block shows current(): the session last picked or last started playing
 // (shared PIN, so every copy agrees), else the elected one, else one that is playing.
 
@@ -152,6 +154,7 @@ export default class NowPlaying extends View {
 
   command(name, cx) {
     const target = this.current();
+    if (target?.controllable === false) return;
     // Answer the click at once; the next read confirms it.
     if (target && (name === "toggle" || name === "play" || name === "pause")) {
       const playing = name === "toggle" ? !target.rate : name === "play";
@@ -194,10 +197,12 @@ export default class NowPlaying extends View {
 
   button(id, icon, size, action) {
     const t = theme();
+    const enabled = this.current()?.controllable !== false;
     return div().id(id).size(size + 12).flex_none().flex().items_center().justify_center().rounded_full()
-      .text_color(t.muted).cursor_pointer().hover((s) => s.bg(t.hover).text_color(t.foreground))
-      .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
-      .on_click((_e, cx) => this.command(action, cx))
+      .when(enabled, (el) => el.text_color(t.muted).cursor_pointer().hover((s) => s.bg(t.hover).text_color(t.foreground))
+        .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
+        .on_click((_e, cx) => this.command(action, cx)))
+      .when(!enabled, (el) => el.text_color(t.dim).opacity(0.4))
       .child(svg(`${MOD}/icons/${icon}.svg`).size(size));
   }
 
