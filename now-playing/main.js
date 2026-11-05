@@ -23,20 +23,22 @@ const COMMAND = { play: 0, pause: 1, toggle: 2, next: 4, previous: 5 };
 const PIN = "now-playing.pinned";
 const LIST = "now-playing.list"; // the open list overlay's id, so a second press closes it
 const MARQUEE_PX_PER_S = 30;
-const MARQUEE_MIN_MS = 4000;
+const MARQUEE_PAUSE_MS = 1500;
 const ROW_PX = 40;
 
-function find(node, id) {
-  if (node?.id === id) return node;
-  for (const child of node?.children ?? []) {
-    const found = find(child, id);
+// The layout nodes from the root down to the first one matching `is`.
+function trail(node, is, up = []) {
+  if (!node) return null;
+  if (is(node)) return [...up, node];
+  for (const child of node.children ?? []) {
+    const found = trail(child, is, [...up, node]);
     if (found) return found;
   }
   return null;
 }
 
 // The sidebar collapses to a rail by width (same rule as workspace-chrome).
-const narrow = () => (find(layout(), "sidebar")?.size?.px ?? Infinity) < 160;
+const narrow = () => (trail(layout(), (n) => n.id === "sidebar")?.at(-1)?.size?.px ?? Infinity) < 160;
 
 const macos = {
   args(...rest) {
@@ -76,6 +78,7 @@ export default class NowPlaying extends View {
     this.sessions = [];
     this.elected = null;
     this.widths = new Map(); // element id -> laid-out width, for the marquee
+    this.scrolls = new Map(); // marquee id -> { text, overflow, end, task }
     this.error = null;
     this.loading = true;
     this.backend = window()?.platform === "macos" ? macos : null;
@@ -134,10 +137,22 @@ export default class NowPlaying extends View {
   hotkey(name, cx) {
     if (name in COMMAND) this.command(name, cx);
     else if (name === "cycle") this.cycle();
-    else if (name === "sessions") this.toggleSessions("dialog");
+    else if (name === "sessions") this.toggleSessions(this.listAnchor());
   }
 
-  toggleSessions(kind) {
+  // Where the list button sits in the window, so the hotkey opens the list
+  // where a click on that button would. Undefined falls back to the pointer.
+  listAnchor() {
+    const path = trail(layout(), (n) => n.content?.mod === "now-playing");
+    if (!path || path.length < 3 || !this.viewport) return undefined;
+    const [row, side, block] = path.slice(-3);
+    const { width, height } = this.viewport;
+    const below = side.children.slice(side.children.indexOf(block)).reduce((sum, c) => sum + (c.size?.px ?? 0), 0);
+    const right = row.children?.[0] === side ? side.size?.px ?? 0 : width;
+    return { x: right - 30, y: height - below + (block.size?.px ?? 0) - 20 };
+  }
+
+  toggleSessions(at) {
     const open = shared(LIST);
     if (open) {
       closeOverlay(open);
@@ -145,7 +160,7 @@ export default class NowPlaying extends View {
       return;
     }
     const height = 12 + 28 + Math.max(1, this.sessions.length) * ROW_PX;
-    setShared(LIST, openOverlay({ mod: "now-playing", props: { view: "sessions" }, kind, width: 260, height }));
+    setShared(LIST, openOverlay({ mod: "now-playing", props: { view: "sessions" }, kind: "popup", at, width: 260, height }));
   }
 
   // Esc or a click beside the list closes it without a press here.
@@ -175,30 +190,49 @@ export default class NowPlaying extends View {
     });
   }
 
-  measure(id) {
+  measure(id, part, text) {
     return (size, cx) => {
       const width = Math.round(size.width);
-      if (this.widths.get(id) === width) return;
-      this.widths.set(id, width);
+      if (this.widths.get(`${id}-${part}`) === width) return;
+      this.widths.set(`${id}-${part}`, width);
+      this.scrollFor(id, text, cx);
       cx.notify();
     };
   }
 
-  // gpui-kit has no text measuring, so the clip box and the unwrapped text
-  // report their laid-out widths; text wider than its box swings to show its end.
-  marquee(id, text, style) {
+  // Each leg glides at a constant speed, then rests at that end so its start
+  // or end can be read. The movement is a native transition; the timer only
+  // turns it around, once per leg.
+  scrollFor(id, text, cx) {
     const overflow = (this.widths.get(`${id}-text`) ?? 0) - (this.widths.get(`${id}-box`) ?? Infinity);
+    const last = this.scrolls.get(id);
+    if (last?.text === text && last.overflow === overflow) return;
+    last?.task?.cancel();
+    const scroll = { text, overflow, end: false, task: null };
+    this.scrolls.set(id, scroll);
+    if (overflow <= 1) return;
+    const leg = (overflow * 1000) / MARQUEE_PX_PER_S;
+    const turn = (cx) => {
+      scroll.end = !scroll.end;
+      cx.notify();
+      scroll.task = cx.timer.after(leg + MARQUEE_PAUSE_MS, turn);
+    };
+    scroll.task = cx.timer.after(MARQUEE_PAUSE_MS, turn);
+  }
+
+  // gpui-kit has no text measuring, so the clip box and the unwrapped text
+  // report their laid-out widths.
+  marquee(id, text, style) {
+    const scroll = this.scrolls.get(id);
+    const moving = scroll?.text === text && scroll.overflow > 1;
     const label = style(div().id(`${id}-text`).flex_none().whitespace_nowrap().relative())
-      .on_size_change(this.measure(`${id}-text`))
-      .when(overflow > 1, (el) => el.loop("left", {
-        from: 0,
-        to: -overflow,
-        period: Math.max(MARQUEE_MIN_MS, (2000 * overflow) / MARQUEE_PX_PER_S),
-        easing: "ease-in-out",
-      }))
+      .on_size_change(this.measure(id, "text", text))
+      .when(moving, (el) => el
+        .transition("left", { duration: (scroll.overflow * 1000) / MARQUEE_PX_PER_S, easing: "linear" })
+        .left(scroll.end ? -scroll.overflow : 0))
       .child(text);
     return h_flex().id(`${id}-box`).w_full().min_w(0).overflow_hidden()
-      .on_size_change(this.measure(`${id}-box`))
+      .on_size_change(this.measure(id, "box", text))
       .child(label);
   }
 
@@ -218,7 +252,7 @@ export default class NowPlaying extends View {
     return h_flex().id("sessions").absolute().right(0).h(26).px(6).gap(4).items_center().rounded(6)
       .text_size(11).text_color(t.dim).cursor_pointer().hover((s) => s.bg(t.hover).text_color(t.foreground))
       .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
-      .on_click(() => this.toggleSessions("popup"))
+      .on_click(() => this.toggleSessions())
       .child(svg(`${MOD}/icons/list.svg`).size(13))
       .child(div().child(String(this.sessions.length)));
   }
@@ -272,6 +306,7 @@ export default class NowPlaying extends View {
   render() {
     const t = theme();
     if (this.listing) return this.renderSessions();
+    this.viewport = globalThis.window.viewport_size();
     if (!this.backend) return this.message("Now Playing supports macOS only for now");
     if (this.error) return this.message(`Now Playing: ${this.error}`);
     const track = this.current();

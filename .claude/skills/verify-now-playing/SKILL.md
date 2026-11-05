@@ -53,7 +53,7 @@ It checks macOS, `herdr-app` on PATH, a running window for `$HERDR_APP_HOME` (`h
 | Click next / previous, or `cmd-alt-.` / `cmd-alt-,` | `$NP do next` / `$NP do previous` | `title` changes; artwork follows 1–2 s later |
 | Send to one session directly | `$NP send <cmd> [bundle]` | prints `1`; no bundle sends to the elected session; exits non-zero when that bundle has no active player |
 | Press `cmd-alt-s` | `$NP do cycle` | the block shows the next session; `now-playing.pinned` in `shared.json` names it |
-| Click the list button, or `cmd-alt-l` | `$NP do sessions` (opens it as a dialog); close with `herdr-app do overlay.close` | a popup with one row per session, the shown one highlighted |
+| Click the list button, or `cmd-alt-l` | `$NP do sessions` (opens the popup at the list button); close with `herdr-app do overlay.close` | a popup with one row per session, the shown one highlighted |
 | Click a session row | ask the person | nothing: the rows are read-only |
 | Check the bindings | `$NP keys` | `all bindings present` |
 | Click the artwork | ask the person (no command equivalent), or `open -b <bundle>` as the same call | the player app comes to the front |
@@ -86,6 +86,7 @@ It kills nothing. Never `pkill herdr*`, never quit Music/Spotify. The mod's own 
 ## Helpers
 
 - `scripts/np-verify`: the commands above (POSIX sh + system python3/osascript; no Homebrew needed).
+- `scripts/marquee-motion`: samples window shots and prints the marquee text's position over time.
 - `scripts/list-toggle`: presses `sessions` through `herdr-app do` and counts open lists after each press.
 - `scripts/crop.js`: JXA PNG crop used by `shot` (`osascript -l JavaScript crop.js <src> <out> <x> <y> <w> <h>`). `sips -c` ignores the offset on macOS 27, so don't use it.
 

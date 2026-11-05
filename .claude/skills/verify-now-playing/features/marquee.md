@@ -4,7 +4,7 @@ A title or subtitle wider than the block scrolls instead of ending in an ellipsi
 
 ## Sub-features
 
-- `marquee-scroll` a title or subtitle wider than its box swings between its start and its end.
+- `marquee-scroll` a title or subtitle wider than its box rests at its start, glides at a constant speed to its end, rests, and glides back.
 - `marquee-still` text that fits is drawn plainly and never moves.
 - `marquee-clip` scrolling text stays inside its box and never draws over the artwork.
 - `marquee-follow` a new track that fits stops the scroll; one that doesn't starts it with a period set by its own overflow.
@@ -27,5 +27,6 @@ Preconditions:
 ## Gotchas
 
 - There is no text measuring API. The widths come from `on_size_change` on the clip box and on the unwrapped text, so the first frame after a change is drawn unscrolled.
-- The loop is native (`.loop("left", …)`). It runs while drawn and never calls render, so a still block costs nothing.
+- The glide is a native `.transition("left")`; a timer flips its target once per leg. Don't go back to `.loop`: its ease-in-out ran at about 30 fps with a peak three times the average speed, and it stuttered.
+- **Motion.** Run `.claude/skills/verify-now-playing/scripts/marquee-motion` while a long subtitle shows. `step(px)` stays an even 3 to 4 per ~55 ms during a leg, 0 for about 1.5 s at each end, and never jumps back to 0 mid-leg.
 - Shots 1 s apart can land on the same offset at a turn. Take a third shot if two look the same.

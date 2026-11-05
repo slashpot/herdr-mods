@@ -45,7 +45,8 @@ Track = { title, artist, album, app, bundle, duration, elapsed, rate, timestamp,
 - The pin is `shared("now-playing.pinned")`, a bundle id. The block and the list popup are two copies of the mod, and shared state keeps them in agreement. A session that starts playing becomes the pick by itself, so the block follows whatever you just started. A pin set by `cycle` holds until another session starts. When the picked app's session goes away, the pick is cleared.
 - Every control goes to the shown session's bundle.
 - The list popup is the same mod opened with `props: { view: "sessions" }`. It polls the backend itself. Only the sidebar copy reads `nextCommand()`, so a key never acts twice.
-- The marquee measures the clip box and the unwrapped text with `on_size_change`, since gpui-kit has no text measuring. Text wider than its box gets a native `.loop("left")` at about 30 px/s.
+- The marquee measures the clip box and the unwrapped text with `on_size_change`, since gpui-kit has no text measuring. Text wider than its box rests 1.5 s at its start, glides to its end at a constant 30 px/s through a native `.transition("left")`, rests again and glides back. A timer only turns it around, once per leg. The first build used `.loop("left")` with ease-in-out: its peak speed was about three times the average and its ends crawled a pixel at a time, which read as stutter.
+- `cmd-alt-l` opens the list as the same popup the list button opens, placed where the list button sits. That spot is computed from the layout's block sizes and the viewport.
 - macOS is the only backend in v1. It uses MediaRemote.
 - Linux (MPRIS) and Windows (GSMTC) come later, once there are users on them.
 - We build our own helper instead of requiring `brew install media-control`, so the mod has no package dependency.
