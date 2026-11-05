@@ -7,7 +7,7 @@ The block's controls have global shortcuts, set in herdr-app's `keys.json`: `cmd
 - `keys-install` `install.sh` adds each binding the person hasn't bound, prints what it added and what it skipped, and leaves `keys.json` untouched when nothing is new.
 - `keys-control` `toggle`, `play`, `pause`, `next`, `previous` act on the session the block shows.
 - `keys-cycle` `cycle` shows the next session in list order, wrapping at the end.
-- `keys-sessions` `sessions` opens the session list as a centered dialog.
+- `keys-sessions` `sessions` toggles the session list as a centered dialog. A second press closes it, and presses never stack a second list. The list button does the same.
 - `keys-once` one press acts once, even while the session list is open.
 - `keys-physical` the key presses themselves (needs the person).
 
@@ -28,6 +28,7 @@ Preconditions:
 - **Toggle.** Run `$NP do toggle`, then `$NP wait-rate 1 5 <bundle of the shown session>`. Only that session's `rate` changes in `$NP sessions`. Run `$NP do toggle` again to restore.
 - **Cycle.** Run `$NP do cycle`, wait 1 s, `$NP shot cycled`. The block shows the next session from `$NP sessions`. `now-playing.pinned` in `~/.config/herdr-app/shared.json` names its bundle.
 - **List.** Run `$NP do sessions`, wait 2 s, `$NP shot list`. `list.png` shows a centered dialog with one row per session. Close it with `herdr-app do overlay.close`.
+- **List toggles.** Run `.claude/skills/verify-now-playing/scripts/list-toggle`. Every line is `ok`: presses alternate open and closed, an outside close (as Esc) is noticed, and six presses in a row leave no stacked list.
 - **Physical keys.** Ask the person to press `cmd-alt-p` while you run `$NP wait-rate`.
 
 ## Gotchas

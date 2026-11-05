@@ -14,13 +14,14 @@
 
 import { View, div, image, svg } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
-import { exec, theme, appHome, window, layout, shared, setShared, props, nextCommand, openOverlay } from "herdr";
+import { exec, theme, appHome, window, layout, shared, setShared, props, nextCommand, openOverlay, closeOverlay } from "herdr";
 
 const MOD = "mods/now-playing";
 const ART_DIR = "data/now-playing"; // under appHome(); image() paths are relative to it
 const POLL_MS = 1500;
 const COMMAND = { play: 0, pause: 1, toggle: 2, next: 4, previous: 5 };
 const PIN = "now-playing.pinned";
+const LIST = "now-playing.list"; // the open list overlay's id, so a second press closes it
 const MARQUEE_PX_PER_S = 30;
 const MARQUEE_MIN_MS = 4000;
 const ROW_PX = 40;
@@ -133,12 +134,23 @@ export default class NowPlaying extends View {
   hotkey(name, cx) {
     if (name in COMMAND) this.command(name, cx);
     else if (name === "cycle") this.cycle();
-    else if (name === "sessions") this.openSessions("dialog");
+    else if (name === "sessions") this.toggleSessions("dialog");
   }
 
-  openSessions(kind) {
+  toggleSessions(kind) {
+    const open = shared(LIST);
+    if (open) {
+      closeOverlay(open);
+      setShared(LIST, null);
+      return;
+    }
     const height = 12 + 28 + Math.max(1, this.sessions.length) * ROW_PX;
-    openOverlay({ mod: "now-playing", props: { view: "sessions" }, kind, width: 260, height });
+    setShared(LIST, openOverlay({ mod: "now-playing", props: { view: "sessions" }, kind, width: 260, height }));
+  }
+
+  // Esc or a click beside the list closes it without a press here.
+  async close() {
+    if (this.listing && shared(LIST) === props().overlay) setShared(LIST, null);
   }
 
   cycle() {
@@ -206,7 +218,7 @@ export default class NowPlaying extends View {
     return h_flex().id("sessions").absolute().right(0).h(26).px(6).gap(4).items_center().rounded(6)
       .text_size(11).text_color(t.dim).cursor_pointer().hover((s) => s.bg(t.hover).text_color(t.foreground))
       .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
-      .on_click(() => this.openSessions("popup"))
+      .on_click(() => this.toggleSessions("popup"))
       .child(svg(`${MOD}/icons/list.svg`).size(13))
       .child(div().child(String(this.sessions.length)));
   }

@@ -86,6 +86,7 @@ It kills nothing. Never `pkill herdr*`, never quit Music/Spotify. The mod's own 
 ## Helpers
 
 - `scripts/np-verify`: the commands above (POSIX sh + system python3/osascript; no Homebrew needed).
+- `scripts/list-toggle`: presses `sessions` through `herdr-app do` and counts open lists after each press.
 - `scripts/crop.js`: JXA PNG crop used by `shot` (`osascript -l JavaScript crop.js <src> <out> <x> <y> <w> <h>`). `sips -c` ignores the offset on macOS 27, so don't use it.
 
 The crop rectangle comes from the shown layout: sidebar width (a resize click in `layouts/.state/<layout>.json` wins over the file) × the `now-playing` block plus every px block below it, scaled by shot height / `window.json` bounds height.
