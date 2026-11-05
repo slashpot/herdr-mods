@@ -35,4 +35,4 @@ Each feature file has an H1, one paragraph of user-visible behavior, then exactl
 - [Install and reload](./install-reload.md) — building, copying and live reload with icons intact.
 - [Marquee](./marquee.md) — long titles and subtitles scroll instead of truncating.
 - [Hotkeys](./hotkeys.md) — keys.json bindings, the install merge, and `herdr-app do now-playing.<command>`.
-- [Sessions](./sessions.md) — every app with a session, the list popup, picking and targeting one.
+- [Sessions](./sessions.md) — every app with a session, the read-only list popup, cycling and targeting one.

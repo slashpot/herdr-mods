@@ -9,12 +9,12 @@
 //   Track = { title, artist, album, app, bundle, duration, elapsed, rate, timestamp, art, id, controllable }
 // controllable is false for an app the OS lists but won't take commands for
 // (a paused browser tab that isn't the elected player): its controls are dimmed.
-// The block shows current(): the session last picked or last started playing
+// The block shows current(): the session last cycled to or last started playing
 // (shared PIN, so every copy agrees), else the elected one, else one that is playing.
 
 import { View, div, image, svg } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
-import { exec, theme, appHome, window, layout, shared, setShared, props, nextCommand, openOverlay, closeOverlay } from "herdr";
+import { exec, theme, appHome, window, layout, shared, setShared, props, nextCommand, openOverlay } from "herdr";
 
 const MOD = "mods/now-playing";
 const ART_DIR = "data/now-playing"; // under appHome(); image() paths are relative to it
@@ -112,7 +112,7 @@ export default class NowPlaying extends View {
           const before = last.get(s.bundle);
           if (!s.art && sameTrack(s, before)) s.art = before.art;
         }
-        // A session that starts playing takes over the block, as if picked.
+        // A session that starts playing takes over the block.
         // The first read has nothing to compare with, so it starts nothing.
         const started = this.loading ? null : sessions.find((s) => s.rate > 0 && !(last.get(s.bundle)?.rate > 0));
         this.sessions = sessions;
@@ -139,11 +139,6 @@ export default class NowPlaying extends View {
   openSessions(kind) {
     const height = 12 + 28 + Math.max(1, this.sessions.length) * ROW_PX;
     openOverlay({ mod: "now-playing", props: { view: "sessions" }, kind, width: 260, height });
-  }
-
-  pick(bundle) {
-    setShared(PIN, bundle);
-    closeOverlay(props().overlay);
   }
 
   cycle() {
@@ -235,8 +230,7 @@ export default class NowPlaying extends View {
     const t = theme();
     const playing = Boolean(track.rate);
     return h_flex().id(`session-${track.bundle}`).h(ROW_PX).flex_none().px(6).gap(8).items_center().rounded(6)
-      .cursor_pointer().when(selected, (el) => el.bg(t.selected)).hover((s) => s.bg(t.hover))
-      .on_click(() => this.pick(track.bundle))
+      .when(selected, (el) => el.bg(t.selected))
       .child(this.cover(track, 28))
       .child(v_flex().flex_1().min_w(0)
         .child(div().text_size(12).font_medium().text_color(t.foreground).truncate().child(track.title))

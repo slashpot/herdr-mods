@@ -54,7 +54,7 @@ It checks macOS, `herdr-app` on PATH, a running window for `$HERDR_APP_HOME` (`h
 | Send to one session directly | `$NP send <cmd> [bundle]` | prints `1`; no bundle sends to the elected session; exits non-zero when that bundle has no active player |
 | Press `cmd-alt-s` | `$NP do cycle` | the block shows the next session; `now-playing.pinned` in `shared.json` names it |
 | Click the list button, or `cmd-alt-l` | `$NP do sessions` (opens it as a dialog); close with `herdr-app do overlay.close` | a popup with one row per session, the shown one highlighted |
-| Click a session row | ask the person | the block shows that session; the popup closes |
+| Click a session row | ask the person | nothing: the rows are read-only |
 | Check the bindings | `$NP keys` | `all bindings present` |
 | Click the artwork | ask the person (no command equivalent), or `open -b <bundle>` as the same call | the player app comes to the front |
 | Narrow the sidebar | `$NP sidebar 120` (cleanup restores) | the block shows artwork + toggle only |

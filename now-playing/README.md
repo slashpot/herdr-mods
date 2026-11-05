@@ -1,6 +1,6 @@
 # Now Playing
 
-A herdr-app sidebar block that controls what the system is playing, such as Apple Music, Spotify, or YouTube in a browser. It shows artwork, title, artist, album and progress, with previous, play/pause and next buttons. A title or subtitle too long for the block scrolls. When several apps have a session, a list button opens all of them, and you pick the one the block shows and controls.
+A herdr-app sidebar block that controls what the system is playing, such as Apple Music, Spotify, or YouTube in a browser. It shows artwork, title, artist, album and progress, with previous, play/pause and next buttons. A title or subtitle too long for the block scrolls. When several apps have a session, a list button shows all of them. The list is read-only. The block shows the session that started playing last, and `cmd-alt-s` cycles through them.
 
 ## Install
 
@@ -41,8 +41,8 @@ The UI knows one data shape. Each OS gets its own backend that produces it. `get
 Track = { title, artist, album, app, bundle, duration, elapsed, rate, timestamp, art, id }
 ```
 
-- The block shows `current()`: the session you picked, else the elected one, else one that is playing, else the first.
-- Your pick is `shared("now-playing.pinned")`, a bundle id. The block and the list popup are two copies of the mod, and shared state keeps them in agreement. A session that starts playing becomes the pick by itself, so the block follows whatever you just started. A manual pick holds until another session starts. When the picked app's session goes away, the pick is cleared.
+- The block shows `current()`: the pinned session, else the elected one, else one that is playing, else the first.
+- The pin is `shared("now-playing.pinned")`, a bundle id. The block and the list popup are two copies of the mod, and shared state keeps them in agreement. A session that starts playing becomes the pick by itself, so the block follows whatever you just started. A pin set by `cycle` holds until another session starts. When the picked app's session goes away, the pick is cleared.
 - Every control goes to the shown session's bundle.
 - The list popup is the same mod opened with `props: { view: "sessions" }`. It polls the backend itself. Only the sidebar copy reads `nextCommand()`, so a key never acts twice.
 - The marquee measures the clip box and the unwrapped text with `on_size_change`, since gpui-kit has no text measuring. Text wider than its box gets a native `.loop("left")` at about 30 px/s.

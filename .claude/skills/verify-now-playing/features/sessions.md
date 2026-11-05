@@ -1,13 +1,13 @@
 # Sessions
 
-Every app with a now-playing session is listed, not only the one macOS elected. With more than one, a list button with the count sits at the right end of the controls. It opens a popup with one row per session: artwork, title, app name and a play or pause mark, with the shown session highlighted. Clicking a row makes the block show and control that session until it goes away.
+Every app with a now-playing session is listed, not only the one macOS elected. With more than one, a list button with the count sits at the right end of the controls. It opens a popup with one row per session: artwork, title, app name and a play or pause mark, with the shown session highlighted. The rows are information only and ignore clicks. `cmd-alt-s` (`cycle`) changes the shown session.
 
 ## Sub-features
 
 - `sessions-list` the backend reports each app that has a title, and which one macOS elected.
 - `sessions-button` the list button and count show only with two or more sessions.
 - `sessions-popup` the popup rows match `$NP sessions`, with the shown one highlighted.
-- `sessions-pick` clicking a row shows that session in the block and closes the popup (needs the person).
+- `sessions-readonly` clicking a row does nothing: no pointer cursor, no hover, the popup stays open (needs the person).
 - `sessions-default` with no pick, the block shows the elected session, else one that is playing, else the first.
 - `sessions-forget` when the picked app's session disappears, the pick is cleared and the default applies.
 - `sessions-target` the controls act on the shown session only.
@@ -15,7 +15,7 @@ Every app with a now-playing session is listed, not only the one macOS elected. 
 
 ## How to get to it (user POV)
 
-- Have two players with sessions, such as Music and a YouTube tab. Click the list button under the progress bar, then click a row.
+- Have two players with sessions, such as Music and a YouTube tab. Click the list button under the progress bar.
 
 ## Driving it with np-verify
 
@@ -31,7 +31,7 @@ Preconditions:
 - **Target.** With a session that has an active player shown, run `$NP do toggle` and `$NP wait-rate 1 5 <bundle>`. In `$NP sessions`, only that line's `rate` changed. Toggle back.
 - **Inactive.** `$NP sessions` marks it `---` instead of `ctl`. `$NP send toggle <that bundle>` exits non-zero with `has no active player`. Pin it with `$NP do cycle`, `$NP shot dimmed`: prev, toggle and next are dimmed. `$NP do toggle`, then `$NP shot dimmed-toggle` within half a second: the icon did not flip, and `$NP sessions` is unchanged.
 - **Check the pin before any `do toggle`.** The pin follows whatever started playing last, so it may name a session that is playing for the person. Pausing a browser tab can drop it from MediaRemote with no way to resume it from here.
-- **Pick.** Ask the person to click a row; then `$NP shot picked`.
+- **Read-only.** Ask the person to click a row; then `$NP shot row-click`. The popup is still open and `now-playing.pinned` did not change.
 
 ## Gotchas
 
