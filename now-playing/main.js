@@ -12,7 +12,7 @@
 
 import { View, div, image, svg } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
-import { exec, theme, appHome, window, layout, shared, setShared, props, nextCommand } from "herdr";
+import { exec, theme, appHome, window, layout, shared, setShared, props, nextCommand, openOverlay, closeOverlay } from "herdr";
 
 const MOD = "mods/now-playing";
 const ART_DIR = "data/now-playing"; // under appHome(); image() paths are relative to it
@@ -21,6 +21,7 @@ const COMMAND = { play: 0, pause: 1, toggle: 2, next: 4, previous: 5 };
 const PIN = "now-playing.pinned";
 const MARQUEE_PX_PER_S = 30;
 const MARQUEE_MIN_MS = 4000;
+const ROW_PX = 40;
 
 function find(node, id) {
   if (node?.id === id) return node;
@@ -68,6 +69,7 @@ function clock(seconds) {
 
 export default class NowPlaying extends View {
   init(_props, cx) {
+    this.listing = props()?.view === "sessions"; // this copy is the session list overlay
     this.sessions = [];
     this.elected = null;
     this.widths = new Map(); // element id -> laid-out width, for the marquee
@@ -77,18 +79,17 @@ export default class NowPlaying extends View {
     if (!this.backend) return;
     this.refresh(cx);
     cx.timer.every(POLL_MS, (cx) => this.refresh(cx));
-    // keys.json and `herdr-app do now-playing.<command>` reach every copy of
-    // the mod; only the sidebar block answers, so a key never acts twice.
-    if (props()?.view !== "sessions") {
-      cx.spawn(async (cx) => {
-        for (;;) {
-          this.hotkey(await nextCommand(), cx);
-          cx.notify();
-        }
-      });
-    }
+    if (this.listing) return;
     // Moves the progress bar between polls; nothing to redraw while paused.
     cx.timer.every(1000, (cx) => { if (this.current()?.rate) cx.notify(); });
+    // keys.json and `herdr-app do now-playing.<command>` reach every copy of
+    // the mod; only the sidebar block answers, so a key never acts twice.
+    cx.spawn(async (cx) => {
+      for (;;) {
+        this.hotkey(await nextCommand(), cx);
+        cx.notify();
+      }
+    });
   }
 
   current() {
@@ -126,6 +127,17 @@ export default class NowPlaying extends View {
   hotkey(name, cx) {
     if (name in COMMAND) this.command(name, cx);
     else if (name === "cycle") this.cycle();
+    else if (name === "sessions") this.openSessions("dialog");
+  }
+
+  openSessions(kind) {
+    const height = 12 + 28 + Math.max(1, this.sessions.length) * ROW_PX;
+    openOverlay({ mod: "now-playing", props: { view: "sessions" }, kind, width: 260, height });
+  }
+
+  pick(bundle) {
+    setShared(PIN, bundle);
+    closeOverlay(props().overlay);
   }
 
   cycle() {
@@ -185,14 +197,53 @@ export default class NowPlaying extends View {
       .child(svg(`${MOD}/icons/${icon}.svg`).size(size));
   }
 
-  artwork(size) {
+  sessionsButton() {
     const t = theme();
-    const track = this.current();
-    return div().id("art").size(size).flex_none().rounded(6).overflow_hidden().bg(t.hover)
+    return h_flex().id("sessions").absolute().right(0).h(26).px(6).gap(4).items_center().rounded(6)
+      .text_size(11).text_color(t.dim).cursor_pointer().hover((s) => s.bg(t.hover).text_color(t.foreground))
+      .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
+      .on_click(() => this.openSessions("popup"))
+      .child(svg(`${MOD}/icons/list.svg`).size(13))
+      .child(div().child(String(this.sessions.length)));
+  }
+
+  cover(track, size) {
+    const t = theme();
+    return div().size(size).flex_none().rounded(size > 30 ? 6 : 4).overflow_hidden().bg(t.hover)
       .flex().items_center().justify_center().text_color(t.dim)
+      .child(track?.art ? image(`${ART_DIR}/${track.art}`).size(size) : svg(`${MOD}/icons/music.svg`).size(size * 0.45));
+  }
+
+  artwork(size) {
+    const track = this.current();
+    return div().id("art").flex_none()
       .when(Boolean(track?.bundle), (el) => el.cursor_pointer()
         .on_click((_e, cx) => cx.spawn(async () => { await this.backend.activate(track); })))
-      .child(track?.art ? image(`${ART_DIR}/${track.art}`).size(size) : svg(`${MOD}/icons/music.svg`).size(size * 0.45));
+      .child(this.cover(track, size));
+  }
+
+  sessionRow(track, selected) {
+    const t = theme();
+    const playing = Boolean(track.rate);
+    return h_flex().id(`session-${track.bundle}`).h(ROW_PX).flex_none().px(6).gap(8).items_center().rounded(6)
+      .cursor_pointer().when(selected, (el) => el.bg(t.selected)).hover((s) => s.bg(t.hover))
+      .on_click(() => this.pick(track.bundle))
+      .child(this.cover(track, 28))
+      .child(v_flex().flex_1().min_w(0)
+        .child(div().text_size(12).font_medium().text_color(t.foreground).truncate().child(track.title))
+        .child(div().text_size(11).text_color(t.muted).truncate().child(track.app || track.bundle)))
+      .child(svg(`${MOD}/icons/${playing ? "play" : "pause"}.svg`).size(10).flex_none()
+        .text_color(playing ? t.accent : t.dim));
+  }
+
+  renderSessions() {
+    const t = theme();
+    const current = this.current();
+    const note = this.error ?? (this.loading ? "" : "Nothing playing");
+    return v_flex().size_full().p(6)
+      .child(div().h(28).flex_none().px(6).flex().items_center().text_size(11).text_color(t.dim).child("Now Playing"))
+      .children(this.sessions.map((s) => this.sessionRow(s, s === current)))
+      .when(!this.sessions.length, (el) => el.child(div().px(6).text_size(12).text_color(t.dim).child(note)));
   }
 
   message(text) {
@@ -205,6 +256,7 @@ export default class NowPlaying extends View {
 
   render() {
     const t = theme();
+    if (this.listing) return this.renderSessions();
     if (!this.backend) return this.message("Now Playing supports macOS only for now");
     if (this.error) return this.message(`Now Playing: ${this.error}`);
     const track = this.current();
@@ -233,9 +285,10 @@ export default class NowPlaying extends View {
           .child(div().h_full().w(pct).rounded(2).bg(t.accent)))
         .child(h_flex().justify_between().text_size(10).text_color(t.dim)
           .child(div().child(clock(at))).child(div().child(clock(track.duration))))))
-      .child(h_flex().justify_center().items_center().gap(14)
+      .child(h_flex().relative().justify_center().items_center().gap(14)
         .child(this.button("previous", "skip-back", 14, "previous"))
         .child(toggle)
-        .child(this.button("next", "skip-forward", 14, "next")));
+        .child(this.button("next", "skip-forward", 14, "next"))
+        .when(this.sessions.length > 1, (el) => el.child(this.sessionsButton())));
   }
 }
