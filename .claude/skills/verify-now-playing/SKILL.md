@@ -5,7 +5,7 @@ description: Verify the herdr-app "Now Playing" mod (now-playing/, a macOS media
 
 # Verify the Now Playing mod
 
-The surface is a block at the bottom of herdr-app's sidebar (layout `main-now-playing`): artwork, title, `artist — album`, a progress bar with clocks, and three icon buttons (previous, play/pause toggle, next). Its data comes from macOS MediaRemote through `/usr/bin/perl` loading `bin/libnowplaying.dylib` (`native/nowplaying.pl`). The only other surface is that backend CLI, which the helper wraps.
+The surface is a block at the bottom of herdr-app's sidebar (layout `main-now-playing`): artwork, a title and `artist — album` that scroll when too long, a progress bar with clocks, three icon buttons (previous, play/pause toggle, next) and, with several sessions, a list button that opens a popup of every session. Global keys in `keys.json` drive the same commands through the mod's `nextCommand()`. Its data comes from macOS MediaRemote through `/usr/bin/perl` loading `bin/libnowplaying.dylib` (`native/nowplaying.pl`). The only other surface is that backend CLI, which the helper wraps.
 
 All commands below run from the repo root. The helper is
 `.claude/skills/verify-now-playing/scripts/np-verify` (call it `NP` below):
@@ -17,8 +17,8 @@ $NP              # prints the usage block
 
 ## Ground rules (read before driving)
 
-- **There is one window and one media session, and both are the person's.** herdr-app keeps one window per `HERDR_APP_HOME`, and MediaRemote is system-wide: there is no isolated instance. `play`/`next` play real audio in the person's player. Record the state with `$NP get before` first, and put it back before cleanup: same track playing or paused as it was.
-- **Never synthesize pointer or key events on the display** (herdr-app's own `--skill` forbids it). The buttons' click handlers call exactly `backend.send(<command>)` (`main.js` `button()` → `command()`), so `$NP send <command>` drives the same call. It does not exercise the click hit-target. When a proof needs the click itself (hover, hit area, optimistic icon flip), ask the person to click, then capture with `$NP shot`.
+- **There is one window and one media session, and both are the person's.** herdr-app keeps one window per `HERDR_APP_HOME`, and MediaRemote is system-wide: there is no isolated instance. `play`/`next` play real audio in the person's player. Record the state with `$NP sessions` and `$NP get before` first, and put it back before cleanup: every session's track playing or paused as it was.
+- **Never synthesize pointer or key events on the display** (herdr-app's own `--skill` forbids it). `$NP do <command>` runs `herdr-app do now-playing.<command>`, the path a `keys.json` binding takes, into the block's own handler. The buttons call the same `command()`, which runs `backend.send(<command>, <shown bundle>)`, so `$NP send <command> <bundle>` drives the backend call. It does not exercise the click hit-target. When a proof needs the click itself (hover, hit area, optimistic icon flip), ask the person to click, then capture with `$NP shot`.
 - **Never kill or restart herdr-app or herdr-core.** If the window isn't running, stop and ask.
 - Do not drive while another agent is verifying this mod: two runs share the one media session.
 
@@ -27,12 +27,12 @@ $NP              # prints the usage block
 The window is already the person's. "Launch" means putting the current source into it:
 
 ```sh
-$NP install      # now-playing/install.sh: clang build (arm64+x86_64) + rsync copy into ~/.config/herdr-app/mods/now-playing + herdr-app check
+$NP install      # now-playing/install.sh: clang build (arm64+x86_64) + rsync copy into ~/.config/herdr-app/mods/now-playing + herdr-app check + keys.json merge
 ```
 
 herdr-app reloads the mod by itself after the copy. Ready = `$NP doctor` passes. If the layout shown isn't `main-now-playing`, ask before switching: `herdr-app do layout.switch --name main-now-playing`. There is no teardown for the install; it is the deliverable.
 
-Needs Xcode Command Line Tools (`clang`). Something must have played in Music, Spotify or a browser since login, or `get` returns `null` (see features/track-display.md).
+Needs Xcode Command Line Tools (`clang`). Something must have played in Music, Spotify or a browser since login, or `$NP sessions` prints `nothing playing` (see features/track-display.md).
 
 ## Doctor
 
@@ -40,16 +40,22 @@ Needs Xcode Command Line Tools (`clang`). Something must have played in Music, S
 $NP doctor       # read-only; exit 0 = worth driving
 ```
 
-It checks macOS, `herdr-app` on PATH, a running window for `$HERDR_APP_HOME` (`herdr-app status`), no status errors, that the shown layout contains a `now-playing` block, that the mod is a copy (not a symlink: svg icons break) matching the repo, that the dylib is newer than `nowplaying.m`, that `herdr-app check` passes, and that the backend `get` returns JSON. Each FAIL line names its fix. Run it first, and again whenever anything looks off.
+It checks macOS, `herdr-app` on PATH, a running window for `$HERDR_APP_HOME` (`herdr-app status`), no status errors, that the shown layout contains a `now-playing` block, that the mod is a copy (not a symlink: svg icons break) matching the repo, that the dylib is newer than `nowplaying.m`, that `herdr-app check` passes, that `keys.json` holds every binding in `now-playing/keys.json`, and that the backend `get` returns JSON, listing each session. Each FAIL line names its fix. Run it first, and again whenever anything looks off.
 
 ## Drive
 
 | User action | Command | Observable result |
 |---|---|---|
 | Look at the block | `$NP shot <label>` | `<label>.block.png` (cropped block + footer) and `<label>.png` (whole window) |
-| Ask what's playing | `$NP get <label>` | JSON `{title, artist, album, app, bundle, duration, elapsed, rate, timestamp, art}` or `null` |
-| Click play/pause | `$NP send toggle`, then `$NP wait-rate 1` or `$NP wait-rate 0` | `rate` flips; within ~1.5 s (one poll) the icon flips and the clock moves |
-| Click next / previous | `$NP send next` / `$NP send previous` | `title` changes; artwork follows 1–2 s later |
+| Ask what's playing | `$NP get <label>` | JSON `{elected, sessions: [{title, artist, album, app, bundle, duration, elapsed, rate, timestamp, art, id}]}` |
+| List sessions | `$NP sessions` | one line per session, `*` on the elected one |
+| Click play/pause, or press `cmd-alt-p` | `$NP do toggle`, then `$NP wait-rate 1 5 <bundle>` or `wait-rate 0 5 <bundle>` | that session's `rate` flips, no other's; within ~1.5 s the icon flips and the clock moves |
+| Click next / previous, or `cmd-alt-.` / `cmd-alt-,` | `$NP do next` / `$NP do previous` | `title` changes; artwork follows 1–2 s later |
+| Send to one session directly | `$NP send <cmd> [bundle]` | prints `1`; no bundle sends to the elected session; exits non-zero when that bundle has no active player |
+| Press `cmd-alt-s` | `$NP do cycle` | the block shows the next session; `now-playing.pinned` in `shared.json` names it |
+| Click the list button, or `cmd-alt-l` | `$NP do sessions` (opens it as a dialog); close with `herdr-app do overlay.close` | a popup with one row per session, the shown one highlighted |
+| Click a session row | ask the person | the block shows that session; the popup closes |
+| Check the bindings | `$NP keys` | `all bindings present` |
 | Click the artwork | ask the person (no command equivalent), or `open -b <bundle>` as the same call | the player app comes to the front |
 | Narrow the sidebar | `$NP sidebar 120` (cleanup restores) | the block shows artwork + toggle only |
 | Leave a note in the transcript | `$NP log <text>` | appended to `transcript.md` |
@@ -72,7 +78,7 @@ Proof standards:
 
 ## Cleanup
 
-1. Put playback back the way `get before` recorded it (`$NP send play` / `pause`; `previous` after a `next`, then confirm `title` with `get`).
+1. Put playback back the way `sessions` and `get before` recorded it (`$NP send play|pause <bundle>` per session; `previous` after a `next`, then confirm with `$NP sessions`). Close any popup with `herdr-app do overlay.close`.
 2. `$NP cleanup`: restores the sidebar width if this run changed it, removes the run's scratch artwork, forgets the current RUN_ID, and lists the evidence it kept.
 
 It kills nothing. Never `pkill herdr*`, never quit Music/Spotify. The mod's own `data/now-playing/` is left alone.

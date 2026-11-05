@@ -4,13 +4,17 @@
 #   np-verify install                 build the dylib and copy the mod into herdr-app (now-playing/install.sh)
 #   np-verify doctor                  read-only: is the running window + installed mod worth driving?
 #   np-verify get [label]             what MediaRemote reports now (the mod's exact backend call) -> <run>/get-<label>.json
-#   np-verify send <cmd>              play|pause|toggle|next|previous (the exact call the mod's buttons make)
-#   np-verify wait-rate <0|1> [secs]  poll get until rate matches (default 5s); exits 1 on timeout
+#   np-verify sessions                one line per session: bundle, rate, app, title; * marks the elected one
+#   np-verify send <cmd> [bundle]     play|pause|toggle|next|previous to one session (the mod's call), or to the elected one
+#   np-verify wait-rate <0|1> [secs] [bundle]
+#                                     poll get until that session's rate matches (default: elected, 5s); exits 1 on timeout
+#   np-verify keys                    does keys.json hold every binding the mod ships?
 #   np-verify shot <label>            window frame -> <run>/<label>.png, Now Playing block -> <run>/<label>.block.png
 #   np-verify sidebar <px>            resize the sidebar (layout.resize) to test the narrow rail; 268 = default
 #   np-verify log <text...>           append a line to <run>/transcript.md
 #   np-verify cleanup                 restore sidebar width, remove scratch artwork; keeps evidence
 #   np-verify run-dir                 print the evidence folder of the current run
+#   np-verify do <command>            herdr-app do now-playing.<command>: the path a keys.json binding takes
 #
 # Evidence: $REPO/.verify/now-playing/<RUN_ID>/ (git-ignored). RUN_ID defaults to the
 # first call's timestamp and is remembered in .verify/now-playing/current until cleanup.
@@ -34,6 +38,40 @@ mkdir -p "$run"
 
 log() { printf '%s  %s\n' "$(date +%H:%M:%S)" "$*" >> "$run/transcript.md"; }
 backend() { /usr/bin/perl "$mod/native/nowplaying.pl" "$mod/bin/libnowplaying.dylib" "$@"; }
+
+# Reads a get JSON on stdin. `sessions` prints one line per session; `rate [bundle]`
+# prints 0/1 for that session (default: elected), or "none" when it isn't there.
+summarize() {
+  /usr/bin/python3 -c '
+import json, sys
+d = json.load(sys.stdin)
+mode, want = sys.argv[1], (sys.argv[2] if len(sys.argv) > 2 else "")
+if mode == "sessions":
+    if not d["sessions"]: print("nothing playing")
+    for t in d["sessions"]:
+        mark = "*" if t.get("bundle") == d["elected"] else " "
+        print("%s %-24s rate %s  %s: %s" % (mark, t.get("bundle"), t.get("rate"), t.get("app"), t.get("title")))
+else:
+    b = want or d["elected"]
+    t = next((t for t in d["sessions"] if t.get("bundle") == b), None)
+    print("none" if t is None else (1 if t.get("rate") else 0))
+' "$@"
+}
+
+# Prints each binding in now-playing/keys.json that $home/keys.json lacks; empty = all present.
+missing_keys() {
+  /usr/bin/python3 - "$src/keys.json" "$home/keys.json" <<'EOF3'
+import json, sys
+ours = json.load(open(sys.argv[1]))
+try: theirs = json.load(open(sys.argv[2]))
+except FileNotFoundError: theirs = {}
+for section, binds in ours.items():
+    for key, action in binds.items():
+        got = theirs.get(section, {}).get(key)
+        if got != action:
+            print("%s %s -> %s (has %s)" % (section, key, action, json.dumps(got)))
+EOF3
+}
 
 cmd_id() {
   case "$1" in play) echo 0;; pause) echo 1;; toggle) echo 2;; next) echo 4;; previous) echo 5;;
@@ -120,11 +158,10 @@ doctor)
     bad "dylib missing or older than nowplaying.m (run: np-verify install)"
   fi
   c=$(herdr-app check "$mod" 2>&1) && ok "herdr-app check passes" || bad "herdr-app check: $c"
-  if g=$(backend get "$scratch" 2>&1) && printf '%s' "$g" | /usr/bin/python3 -c 'import json,sys; json.load(sys.stdin)'; then
-    ok "backend get: $(printf '%s' "$g" | /usr/bin/python3 -c '
-import json, sys
-t = json.load(sys.stdin)
-print("nothing playing" if t is None else "%s: %s (rate %s)" % (t.get("app"), t.get("title"), t.get("rate")))')"
+  m=$(missing_keys 2>&1) && [ -z "$m" ] && ok "keys.json has every now-playing binding" || bad "keys.json lacks bindings (run: np-verify install): $m"
+  if g=$(backend get "$scratch" 2>&1) && printf '%s' "$g" | summarize sessions >/dev/null; then
+    ok "backend get:"
+    printf '%s' "$g" | summarize sessions | sed 's/^/        /'
   else
     bad "backend get failed: $g"
   fi
@@ -139,22 +176,40 @@ get)
   log "get $label: $(cat "$run/get-$label.json")"
   ;;
 
-send)
-  [ -n "${2:-}" ] || { echo "usage: np-verify send play|pause|toggle|next|previous" >&2; exit 2; }
-  out=$(backend send "$(cmd_id "$2")")
+sessions)
+  out=$(backend get "$scratch" | summarize sessions)
   echo "$out"
-  log "send $2: $out"
+  log "sessions: $(echo "$out" | tr '\n' ';')"
+  ;;
+
+send)
+  [ -n "${2:-}" ] || { echo "usage: np-verify send play|pause|toggle|next|previous [bundle]" >&2; exit 2; }
+  out=$(backend send "$(cmd_id "$2")" ${3:+"$3"})
+  echo "$out"
+  log "send $2 ${3:-(elected)}: $out"
   [ "$out" = true ] || [ "$out" = 1 ]
   ;;
 
 wait-rate)
-  want="${2:?usage: np-verify wait-rate 0|1 [secs]}"; secs="${3:-5}"; i=0
+  want="${2:?usage: np-verify wait-rate 0|1 [secs] [bundle]}"; secs="${3:-5}"; bundle="${4:-}"; i=0
   while [ "$i" -lt $((secs * 2)) ]; do
-    r=$(backend get "$scratch" | /usr/bin/python3 -c 'import json,sys; t=json.load(sys.stdin); print(1 if t and t.get("rate") else 0)')
-    if [ "$r" = "$want" ]; then log "wait-rate $want: reached"; echo "rate $want"; exit 0; fi
+    r=$(backend get "$scratch" | summarize rate "$bundle")
+    if [ "$r" = "$want" ]; then log "wait-rate $want ${bundle:-(elected)}: reached"; echo "rate $want"; exit 0; fi
     i=$((i + 1)); /bin/sleep 0.5
   done
-  log "wait-rate $want: TIMEOUT after ${secs}s"; echo "timeout waiting for rate $want" >&2; exit 1
+  log "wait-rate $want ${bundle:-(elected)}: TIMEOUT after ${secs}s"; echo "timeout waiting for rate $want" >&2; exit 1
+  ;;
+
+keys)
+  m=$(missing_keys)
+  if [ -z "$m" ]; then echo "all bindings present in $home/keys.json"; else echo "$m"; exit 1; fi
+  ;;
+
+do)
+  [ -n "${2:-}" ] || { echo "usage: np-verify do toggle|play|pause|next|previous|cycle|sessions" >&2; exit 2; }
+  out=$(herdr-app do "now-playing.$2" 2>&1) || { echo "$out" >&2; log "do $2: FAILED $out"; exit 1; }
+  echo "$out"
+  log "do $2: $out"
   ;;
 
 shot)
@@ -196,7 +251,7 @@ cleanup)
 run-dir) echo "$run" ;;
 
 *)
-  sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'
   exit 2
   ;;
 esac

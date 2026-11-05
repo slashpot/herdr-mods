@@ -6,14 +6,14 @@ The maintained verification list for the herdr-app Now Playing mod. Read this in
 
 - macOS; herdr-app window running with layout `main-now-playing` (the person's window — there is no second instance).
 - `$NP install` done for the commit under test, then `$NP doctor` exits 0.
-- A player has a now-playing session: Music or Spotify has played at least one track since login. `$NP get` returns an object, not `null`.
-- Record `$NP get before` and `$NP shot before` at the start of every run.
+- A player has a now-playing session: Music or Spotify has played at least one track since login. `$NP sessions` prints at least one line.
+- Record `$NP sessions`, `$NP get before` and `$NP shot before` at the start of every run.
 
 ## Driving conventions
 
-- Buttons are driven with `$NP send <command>`: the same call the click handler makes. A proof that needs the physical click asks the person to click.
+- Buttons are driven with `$NP do <command>` (the block's own handler, aimed at the shown session) or `$NP send <command> <bundle>` (the backend call it makes). A proof that needs the physical click asks the person to click.
 - Wait for state (`$NP wait-rate`, or ≥ 2 s for one 1.5 s poll) before `$NP shot`.
-- Restore playback to the `before` state, then `$NP cleanup`. Cleanup keeps `.verify/now-playing/<RUN_ID>/`.
+- Restore every session's playback to the `before` state, then `$NP cleanup`. Cleanup keeps `.verify/now-playing/<RUN_ID>/`.
 
 ## Proof and skip reporting
 
@@ -33,3 +33,6 @@ Each feature file has an H1, one paragraph of user-visible behavior, then exactl
 - [Artwork and open player](./artwork-open-player.md) — artwork refresh on track change and clicking it to bring the player forward.
 - [Narrow sidebar rail](./narrow-rail.md) — the compact block when the sidebar is under 160 px.
 - [Install and reload](./install-reload.md) — building, copying and live reload with icons intact.
+- [Marquee](./marquee.md) — long titles and subtitles scroll instead of truncating.
+- [Hotkeys](./hotkeys.md) — keys.json bindings, the install merge, and `herdr-app do now-playing.<command>`.
+- [Sessions](./sessions.md) — every app with a session, the list popup, picking and targeting one.
