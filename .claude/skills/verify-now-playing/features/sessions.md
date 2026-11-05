@@ -35,6 +35,7 @@ Preconditions:
 ## Gotchas
 
 - MediaRemote lists a paused browser tab as a client with full info, but only active player paths take a targeted command. Sent to an inactive client, MediaRemote delivers it to the elected player instead. The backend refuses that send (exit 4), so the shown play icon reverts on the next poll.
+- A session going from paused to playing becomes the pick: pin Chrome with `$NP do cycle`, `$NP send play com.apple.Music` (Music must be active), and within one poll `now-playing.pinned` is `com.apple.Music` and the block shows Music. Pause Music afterward.
 - The pick lives in `shared("now-playing.pinned")`, so the block and the popup agree, and it survives a restart.
 - Sessions keep MediaRemote's client order. Cycle follows it.
 - The popup is its own copy of the mod and polls the backend while open.

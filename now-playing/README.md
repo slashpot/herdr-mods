@@ -42,7 +42,7 @@ Track = { title, artist, album, app, bundle, duration, elapsed, rate, timestamp,
 ```
 
 - The block shows `current()`: the session you picked, else the elected one, else one that is playing, else the first.
-- Your pick is `shared("now-playing.pinned")`, a bundle id. The block and the list popup are two copies of the mod, and shared state keeps them in agreement. When the picked app's session goes away, the pick is cleared.
+- Your pick is `shared("now-playing.pinned")`, a bundle id. The block and the list popup are two copies of the mod, and shared state keeps them in agreement. A session that starts playing becomes the pick by itself, so the block follows whatever you just started. A manual pick holds until another session starts. When the picked app's session goes away, the pick is cleared.
 - Every control goes to the shown session's bundle.
 - The list popup is the same mod opened with `props: { view: "sessions" }`. It polls the backend itself. Only the sidebar copy reads `nextCommand()`, so a key never acts twice.
 - The marquee measures the clip box and the unwrapped text with `on_size_change`, since gpui-kit has no text measuring. Text wider than its box gets a native `.loop("left")` at about 30 px/s.

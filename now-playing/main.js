@@ -7,8 +7,8 @@
 // session, plus the one the OS elected:
 //   { elected: bundle | null, sessions: Track[] }
 //   Track = { title, artist, album, app, bundle, duration, elapsed, rate, timestamp, art, id }
-// The block shows current(): the session the person picked (shared PIN, so
-// every copy agrees), else the elected one, else one that is playing.
+// The block shows current(): the session last picked or last started playing
+// (shared PIN, so every copy agrees), else the elected one, else one that is playing.
 
 import { View, div, image, svg } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
@@ -110,11 +110,15 @@ export default class NowPlaying extends View {
           const before = last.get(s.bundle);
           if (!s.art && sameTrack(s, before)) s.art = before.art;
         }
+        // A session that starts playing takes over the block, as if picked.
+        // The first read has nothing to compare with, so it starts nothing.
+        const started = this.loading ? null : sessions.find((s) => s.rate > 0 && !(last.get(s.bundle)?.rate > 0));
         this.sessions = sessions;
         this.elected = elected;
         this.error = null;
         const pinned = shared(PIN);
-        if (pinned && !sessions.some((s) => s.bundle === pinned)) setShared(PIN, null);
+        if (started && !this.listing && started.bundle !== pinned) setShared(PIN, started.bundle);
+        else if (pinned && !sessions.some((s) => s.bundle === pinned)) setShared(PIN, null);
       } catch (e) {
         this.error = String(e?.message ?? e);
       }
