@@ -115,6 +115,8 @@ static NSMutableDictionary *track(NSDictionary *info, id client) {
     };
     for (NSString *key in keys) {
         id value = info[keys[key]];
+        // A live stream reports an infinite duration, which JSON cannot carry.
+        if ([value isKindOfClass:NSNumber.class] && !isfinite([value doubleValue])) continue;
         if (value) out[key] = value;
     }
     // elapsed is a snapshot taken at timestamp; the reader extrapolates with rate.
