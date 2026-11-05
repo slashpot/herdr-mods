@@ -1,0 +1,27 @@
+# Narrow sidebar rail
+
+When the sidebar is narrower than 160 px (the same rule as workspace-chrome's rail) the block collapses to the artwork above a single play/pause button, and message states show only the note icon.
+
+## Sub-features
+
+- `rail-compact` sidebar < 160 px: 36 px artwork and the toggle, no text, no bar, no prev/next.
+- `rail-restore` back above 160 px: the full block returns.
+
+## How to get to it (user POV)
+
+- Narrow the sidebar (or use a layout whose sidebar is a rail). `main-now-playing` sets `resizable: false`, so the person's route is a layout edit or `layout.resize`.
+
+## Driving it with np-verify
+
+Preconditions:
+
+- `$NP doctor` exits 0; a track is loaded.
+
+- **Collapse.** Run `$NP sidebar 120`, wait 1 s, `$NP shot rail`. `rail.block.png` shows only the cover and one play/pause icon.
+- **Toggle from the rail.** Optional: `$NP send toggle` + `wait-rate`, `$NP shot rail-toggled`; the one icon flips. Toggle back.
+- **Restore.** Run `$NP cleanup` (it puts the width back), or `$NP sidebar 268` and `$NP shot wide`; the full block is back.
+
+## Gotchas
+
+- `layout.resize` is saved in `layouts/.state/main-now-playing.json`: the helper records the original width and cleanup restores it. Don't skip cleanup.
+- The other sidebar mods also collapse at this width; the screenshot crop still covers the right area.
