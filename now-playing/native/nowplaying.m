@@ -27,6 +27,7 @@ typedef int (*ClientGetPidFn)(id);
 typedef id (*GetOriginFn)(void);
 typedef id (*PathCreateFn)(id origin, id client, id player);
 typedef void (*GetInfoForPlayerFn)(id path, BOOL wantArtwork, dispatch_queue_t, void (^)(NSDictionary *));
+typedef void (*GetActivePathsFn)(id origin, dispatch_queue_t, void (^)(NSArray *));
 typedef void (*GetPidFn)(dispatch_queue_t, void (^)(int));
 typedef Boolean (*SendFn)(int, NSDictionary *);
 typedef void (*SendToPlayerFn)(unsigned cmd, NSDictionary *options, id path, unsigned appOptions,
@@ -198,16 +199,21 @@ static void np_send(void) {
     }
     NSString *want = [NSString stringWithUTF8String:bundle];
     dispatch_queue_t q = dispatch_get_main_queue();
-    ((GetClientsFn)mr("MRMediaRemoteGetNowPlayingClients"))(q, ^(NSArray *clients) {
-        for (id client in clients) {
+    id origin = ((GetOriginFn)mr("MRMediaRemoteGetLocalOrigin"))();
+    // Only active player paths take a targeted command. Sent to the path of a
+    // listed but inactive client (a paused browser tab), MediaRemote quietly
+    // delivers it to the elected player instead, so refuse rather than misfire.
+    ((GetActivePathsFn)mr("MRMediaRemoteGetActivePlayerPathsForOrigin"))(origin, q, ^(NSArray *paths) {
+        for (id path in paths) {
+            id client = ((ClientGetFn)mr("MRNowPlayingPlayerPathGetClient"))(path);
             if (![((ClientGetFn)mr("MRNowPlayingClientGetBundleIdentifier"))(client) isEqual:want]) continue;
-            ((SendToPlayerFn)mr("MRMediaRemoteSendCommandToPlayer"))(command, nil, pathFor(client), 0, q, ^(unsigned err, NSArray *statuses) {
+            ((SendToPlayerFn)mr("MRMediaRemoteSendCommandToPlayer"))(command, nil, path, 0, q, ^(unsigned err, NSArray *statuses) {
                 emit(@(err == 0));
                 exitSoon(err == 0);
             });
             return;
         }
-        fprintf(stderr, "no now-playing session for %s\n", bundle);
+        fprintf(stderr, "%s has no active player to send to\n", bundle);
         exit(4);
     });
 }
