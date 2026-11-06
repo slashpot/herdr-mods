@@ -59,7 +59,8 @@ Track = { title, artist, album, app, bundle, duration, elapsed, rate, timestamp,
 - `get [art-dir]` lists clients with `MRMediaRemoteGetNowPlayingClients` and reads each one with `MRMediaRemoteGetNowPlayingInfoForPlayer` on a path from `MRNowPlayingPlayerPathCreate`. A client without a title is left out. `elected` is the bundle of `MRMediaRemoteGetNowPlayingApplicationPID`.
 - Artwork is one file per session, `<bundle>-<content hash>.jpg|png`. A new picture is a new path, so `image()` never shows a stale cache. After each `get`, files no session uses are removed, except a session's last one while its next picture is still on the way.
 - `send <command-id> [bundle]` sends 0 play, 1 pause, 2 toggle, 4 next, 5 previous. With a bundle it uses `MRMediaRemoteSendCommandToPlayer` on that app's active player path. Without one it uses `MRMediaRemoteSendCommand`, which goes to the elected app.
-- Verified on macOS 27.2: reading with Apple Music, Spotify and Chrome, targeted control with Apple Music.
+- Music and Spotify skip MediaRemote for commands. `main.js` sends them `osascript -e 'tell application id "<bundle>" to playpause'` (or `play`, `pause`, `next track`, `previous track`) and marks them controllable, because AppleScript reaches them whichever app is elected. If the script fails, such as when the person denied Automation access, the send falls back to MediaRemote.
+- Verified on macOS 27.2: reading with Apple Music, Spotify and Chrome, targeted control with Apple Music, and AppleScript control of Music and Spotify while another app is elected.
 
 ## Gotchas
 
@@ -67,6 +68,8 @@ Track = { title, artist, album, app, bundle, duration, elapsed, rate, timestamp,
 - Artwork arrives 1 to 2 seconds after a track change. The mod keeps the session's last picture while it is the same track.
 - MediaRemote lists every app with a session, including paused ones, and keeps the last active app elected while it is paused.
 - Only an active player path takes a targeted command. A paused browser tab is listed with full info, but a command sent to its path, its app or its client object reaches the elected player instead. The backend refuses that send (exit 4). `get` marks each session `controllable` when it has an active player, and the block dims the controls of one that isn't, so a press and a hotkey do nothing. Clicking the artwork still opens that app. In practice the active player is always the elected app alone. A Chrome tab that keeps playing after Music is started and paused stays listed but uncontrollable, and Music stays elected while paused. The election moves only when an app starts playing. `MRMediaRemoteSetNowPlayingPlayer` returns no error and changes nothing, and `MRMediaRemoteSetNowPlayingClientForOrigin` answers "Operation not permitted" from perl, so the mod cannot pick the elected app. A browser tab paused through MediaRemote can drop out of the list entirely, with no path left to resume it.
+- The first AppleScript command to each app makes macOS ask whether Herdr may control it. Until the person answers, that `osascript` waits and the press does nothing. A command that starts playback, such as `play` or `playpause` on a paused app, also moves the election to that app. `pause` does not.
+- Spotify starts playing on `next track` even while paused.
 - A live stream reports an infinite duration. JSON cannot carry it, so `get` drops any non-finite number and the block shows no progress bar for that session.
 - Sessions keep MediaRemote's client order, and `cycle` follows it.
 - On macOS, Option changes the character a key types. `herdr-app do` proves each command, but not that `cmd-alt-.` and `cmd-alt-,` match a real press on every keyboard layout.

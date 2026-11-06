@@ -1,0 +1,22 @@
+#!/bin/zsh
+# scripted-control <Music|Spotify>: with that app shown in the block and another app elected,
+# the mod cycles to it, toggles it twice through the mod and check its own player state flips and comes back.
+app=${1:?usage: scripted-control <Music|Spotify>}
+NP=${0:A:h}/np-verify
+bundle=$([[ $app == Music ]] && echo com.apple.Music || echo com.spotify.client)
+elected() { $NP sessions | awk '$1=="*"{print $2}'; }
+state() { osascript -e "tell application \"$app\" to get player state"; }
+fail=0
+check() { if [[ $2 == $3 ]]; then echo "PASS $1 ($2)"; else echo "FAIL $1: got $2, want $3"; fail=1; fi; }
+[[ $(elected) == $bundle ]] && { echo "$app is elected; start another player first so this tests the non-elected path"; exit 2; }
+pinned() { /usr/bin/python3 -c 'import json,os;print(json.load(open(os.path.expanduser("~/.config/herdr-app/shared.json"))).get("now-playing.pinned"))'; }
+for i in 1 2 3; do [[ $(pinned) == $bundle ]] && break; $NP do cycle >/dev/null; sleep 1; done
+[[ $(pinned) == $bundle ]] || { echo "could not pin $bundle"; exit 2; }
+before=$(state); want=$([[ $before == playing ]] && echo paused || echo playing)
+other=$(elected)
+echo "elected $other, $app $before"
+$NP do toggle >/dev/null; sleep 2.5
+check "toggle while $other is elected" "$(state)" $want
+$NP do toggle >/dev/null; sleep 2.5
+check "toggle back" "$(state)" $before
+exit $fail

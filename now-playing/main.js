@@ -8,7 +8,7 @@
 //   { elected: bundle | null, sessions: Track[] }
 //   Track = { title, artist, album, app, bundle, duration, elapsed, rate, timestamp, art, id, controllable }
 // controllable is false for an app the OS lists but won't take commands for
-// (a paused browser tab that isn't the elected player): its controls are dimmed.
+// (a browser tab that isn't the elected player): its controls are dimmed.
 // The block shows current(): the session last cycled to or last started playing
 // (shared PIN, so every copy agrees), else the elected one, else one that is playing.
 
@@ -40,6 +40,11 @@ function trail(node, is, up = []) {
 // The sidebar collapses to a rail by width (same rule as workspace-chrome).
 const narrow = () => (trail(layout(), (n) => n.id === "sidebar")?.at(-1)?.size?.px ?? Infinity) < 160;
 
+// MediaRemote only commands the elected app. These apps take the same commands
+// over AppleScript whichever app is elected, so they always go that way.
+const SCRIPTED = new Set(["com.apple.Music", "com.spotify.client"]);
+const VERB = { play: "play", pause: "pause", toggle: "playpause", next: "next track", previous: "previous track" };
+
 const macos = {
   args(...rest) {
     const home = appHome();
@@ -48,9 +53,16 @@ const macos = {
   async get() {
     const r = await exec("/usr/bin/perl", this.args("get", `${appHome()}/${ART_DIR}`));
     if (r.code !== 0) throw new Error(r.stderr.trim() || `exit ${r.code}`);
-    return JSON.parse(r.stdout);
+    const read = JSON.parse(r.stdout);
+    for (const s of read.sessions) if (SCRIPTED.has(s.bundle)) s.controllable = true;
+    return read;
   },
   async send(command, bundle) {
+    // A denied Automation permission fails the script; MediaRemote still reaches the elected app.
+    if (SCRIPTED.has(bundle)) {
+      const r = await exec("/usr/bin/osascript", ["-e", `tell application id "${bundle}" to ${VERB[command]}`]);
+      if (r.code === 0) return;
+    }
     await exec("/usr/bin/perl", this.args("send", String(COMMAND[command]), ...(bundle ? [bundle] : [])));
   },
   async activate(track) {
