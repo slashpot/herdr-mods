@@ -1,6 +1,6 @@
 # Playback controls
 
-Three buttons under the progress bar control whichever player is active: previous (skip-back), a play/pause toggle whose icon shows the action available (play icon while paused), and next (skip-forward). The toggle's icon flips at once, before the player confirms.
+Three buttons under the progress bar control the session the block shows (see sessions.md): previous (skip-back), a play/pause toggle whose icon shows the action available (play icon while paused), and next (skip-forward). The toggle's icon flips at once, before the player confirms.
 
 ## Sub-features
 
@@ -8,6 +8,7 @@ Three buttons under the progress bar control whichever player is active: previou
 - `ctl-toggle-pause` toggle while playing pauses; icon becomes play; clock freezes.
 - `ctl-next` next moves to the next track; title, subtitle and artwork update.
 - `ctl-previous` previous goes back a track (or restarts the current one if it has played more than a few seconds — the player decides).
+- `ctl-target` with several sessions, a button changes only the shown one.
 - `ctl-optimistic` the toggle icon changes on click, before the next poll (click-only; needs the person).
 
 ## How to get to it (user POV)
@@ -31,6 +32,7 @@ Preconditions:
 ## Gotchas
 
 - `send` plays real audio on the person's machine. Restore to `before` every time.
+- `$NP send <cmd>` without a bundle goes to the elected session, which is the shown one only when nothing is picked. Pass the shown bundle, or use `$NP do <cmd>`, when a session is picked.
 - `previous` after more than ~3 s of playback restarts the track instead of going back; send it again.
 - `send` prints `1` when MediaRemote accepted the command, not when the player obeyed. Prove it with `get`.
 - Spotify sometimes needs ~1 s longer than Music to report the new `rate`; use `wait-rate` with a timeout, not a fixed sleep.

@@ -5,7 +5,7 @@ The square at the left of the block shows the track's cover (a music-note placeh
 ## Sub-features
 
 - `art-show` the cover for the current track; placeholder icon when the player gives none.
-- `art-refresh` after a track change the cover switches within ~3 s; the mod's `data/now-playing/` holds exactly one image, named after its content.
+- `art-refresh` after a track change the cover switches within ~3 s; the mod's `data/now-playing/` holds one image per session, named `<bundle>-<content hash>`.
 - `art-open` clicking the cover runs `open -b <bundle>`: the player comes to the front.
 
 ## How to get to it (user POV)
@@ -17,10 +17,10 @@ The square at the left of the block shows the track's cover (a music-note placeh
 
 Preconditions:
 
-- `$NP get before` shows an `art` field (Music library tracks and Spotify both provide one).
+- `$NP get before` shows an `art` field on the shown session (Music library tracks and Spotify both provide one).
 
-- **Cover shown.** Run `ls ~/.config/herdr-app/data/now-playing/` and `$NP shot art`. Exactly one `<16 hex>.jpg|png` file exists and `art.block.png` shows a cover, not the note icon.
-- **Refresh.** Run `$NP send next`, wait 4 s, `ls ~/.config/herdr-app/data/now-playing/` and `$NP shot art-next`. One file, with a new name; the block shows the new cover and the new title. Restore with `$NP send previous`.
+- **Cover shown.** Run `ls ~/.config/herdr-app/data/now-playing/` and `$NP shot art`. One `<bundle>-<16 hex>.jpg|png` file per session in `$NP sessions` exists and `art.block.png` shows a cover, not the note icon.
+- **Refresh.** Run `$NP send next`, wait 4 s, `ls ~/.config/herdr-app/data/now-playing/` and `$NP shot art-next`. That session's file has a new name and its old one is gone; the block shows the new cover and the new title. Restore with `$NP send previous`.
 - **Open player.** Ask the person to click the cover, or reproduce the exact call: `open -b "$(python3 -c 'import json;print(json.load(open(".verify/now-playing/'"$(cat .verify/now-playing/current)"'/get-before.json"))["bundle"])')"`. The player's window becomes frontmost (`osascript -e 'tell application "System Events" to name of first process whose frontmost is true'`).
 
 ## Gotchas

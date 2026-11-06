@@ -2,17 +2,17 @@
 # MediaRemote, and runs it. See nowplaying.m.
 #
 #   /usr/bin/perl nowplaying.pl <dylib> get [art-dir]
-#   /usr/bin/perl nowplaying.pl <dylib> send <command-id>
+#   /usr/bin/perl nowplaying.pl <dylib> send <command-id> [bundle]
 use strict;
 use warnings;
 use DynaLoader;
 
-my ($lib, $cmd, $arg) = @ARGV;
-die "usage: nowplaying.pl <dylib> get [art-dir] | send <id>\n" unless $lib && $cmd;
+my ($lib, $cmd, $arg, $bundle) = @ARGV;
+die "usage: nowplaying.pl <dylib> get [art-dir] | send <id> [bundle]\n" unless $lib && $cmd;
 
 $ENV{NP_CMD} = $cmd;
 if ($cmd eq 'get') { $ENV{NP_ART_DIR} = $arg // ''; }
-else               { $ENV{NP_ARG}     = $arg // ''; }
+else               { $ENV{NP_ARG} = $arg // ''; $ENV{NP_BUNDLE} = $bundle // ''; }
 
 my $handle = DynaLoader::dl_load_file($lib, 0)
   or die "cannot load $lib: " . DynaLoader::dl_error() . "\n";
