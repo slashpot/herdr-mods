@@ -43,6 +43,9 @@ const narrow = () => (trail(layout(), (n) => n.id === "sidebar")?.at(-1)?.size?.
 // MediaRemote only commands the elected app. These apps take the same commands
 // over AppleScript whichever app is elected, so they always go that way.
 const SCRIPTED = new Set(["com.apple.Music", "com.spotify.client"]);
+// Rows of these apps switch the block on click. Podcasts has no AppleScript,
+// so its controls still work only while it is elected.
+const PICKABLE = new Set([...SCRIPTED, "com.apple.podcasts"]);
 const VERB = { play: "play", pause: "pause", toggle: "playpause", next: "next track", previous: "previous track" };
 
 const macos = {
@@ -180,6 +183,11 @@ export default class NowPlaying extends View {
     if (this.listing && shared(LIST) === props().overlay) setShared(LIST, null);
   }
 
+  pick(bundle) {
+    setShared(PIN, bundle);
+    closeOverlay(props().overlay);
+  }
+
   cycle() {
     if (this.sessions.length < 2) return;
     const at = this.sessions.indexOf(this.current());
@@ -289,6 +297,8 @@ export default class NowPlaying extends View {
     const playing = Boolean(track.rate);
     return h_flex().id(`session-${track.bundle}`).h(ROW_PX).flex_none().px(6).gap(8).items_center().rounded(6)
       .when(selected, (el) => el.bg(t.selected))
+      .when(PICKABLE.has(track.bundle), (el) => el.cursor_pointer().hover((s) => s.bg(t.hover))
+        .on_click(() => this.pick(track.bundle)))
       .child(this.cover(track, 28))
       .child(v_flex().flex_1().min_w(0)
         .child(div().text_size(12).font_medium().text_color(t.foreground).truncate().child(track.title))

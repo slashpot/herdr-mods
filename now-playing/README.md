@@ -1,6 +1,6 @@
 # Now Playing
 
-A herdr-app sidebar block that controls what the system is playing, such as Apple Music, Spotify, or YouTube in a browser. It shows artwork, title, artist, album and progress, with previous, play/pause and next buttons. A title or subtitle too long for the block scrolls. When several apps have a session, a list button or `cmd-alt-l` toggles a list of all of them. The list is read-only. The block shows the session that started playing last, and `cmd-alt-s` cycles through them.
+A herdr-app sidebar block that controls what the system is playing, such as Apple Music, Spotify, or YouTube in a browser. It shows artwork, title, artist, album and progress, with previous, play/pause and next buttons. A title or subtitle too long for the block scrolls. When several apps have a session, a list button or `cmd-alt-l` toggles a list of all of them. Clicking a Music, Spotify or Podcasts row shows that session; other rows are read-only. The block shows the session that started playing last, and `cmd-alt-s` cycles through them.
 
 ## Install
 
