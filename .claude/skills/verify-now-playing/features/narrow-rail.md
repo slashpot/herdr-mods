@@ -18,8 +18,8 @@ Preconditions:
 - `$NP doctor` exits 0; a track is loaded.
 
 - **Collapse.** Run `$NP sidebar 120`, wait 1 s, `$NP shot rail`. `rail.block.png` shows only the cover and one play/pause icon.
-- **Toggle from the rail.** Optional: `$NP send toggle` + `wait-rate`, `$NP shot rail-toggled`; the one icon flips. Toggle back.
-- **Restore.** Run `$NP cleanup` (it puts the width back), or `$NP sidebar 268` and `$NP shot wide`; the full block is back.
+- **Toggle from the rail.** Optional: `$NP do toggle` + `wait-rate`, `$NP shot rail-toggled`; the one icon flips. Toggle back.
+- **Restore.** Run `$NP cleanup` (it puts back the width `sidebar` recorded), then `$NP shot wide`; the full block is back. Don't restore with `$NP sidebar 268`: 268 is the layout file's default, and the person's live width in `layouts/.state/main-now-playing.json` may differ.
 
 ## Gotchas
 

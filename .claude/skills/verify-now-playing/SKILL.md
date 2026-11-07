@@ -18,7 +18,7 @@ $NP              # prints the usage block
 ## Ground rules (read before driving)
 
 - **There is one window and one media session, and both are the person's.** herdr-app keeps one window per `HERDR_APP_HOME`, and MediaRemote is system-wide: there is no isolated instance. `play`/`next` play real audio in the person's player. Record the state with `$NP sessions` and `$NP get before` first, and put it back before cleanup: every session's track playing or paused as it was.
-- **Never synthesize pointer or key events on the display** (herdr-app's own `--skill` forbids it). `$NP do <command>` runs `herdr-app do now-playing.<command>`, the path a `keys.json` binding takes, into the block's own handler. The buttons call the same `command()`, which runs `backend.send(<command>, <shown bundle>)`, so `$NP send <command> <bundle>` drives the backend call. It does not exercise the click hit-target. When a proof needs the click itself (hover, hit area, optimistic icon flip), ask the person to click, then capture with `$NP shot`.
+- **Never synthesize pointer or key events on the display** (herdr-app's own `--skill` forbids it). `$NP do <command>` runs `herdr-app do now-playing.<command>`, the path a `keys.json` binding takes, into the block's own `command()`, the same one the buttons call. That is the default way to drive the controls. `command()` sends Music and Spotify their commands over AppleScript and everything else through MediaRemote. `$NP send <command> <bundle>` is MediaRemote only, so it matches the mod for other apps, and for Music or Spotify only while that app is elected. Otherwise it exits 4 (`has no active player`). Neither path exercises the click hit-target. When a proof needs the click itself (hover, hit area, optimistic icon flip), ask the person to click, then capture with `$NP shot`.
 - **Never kill or restart herdr-app or herdr-core.** If the window isn't running, stop and ask.
 - Do not drive while another agent is verifying this mod: two runs share the one media session.
 
@@ -49,13 +49,13 @@ It checks macOS, `herdr-app` on PATH, a running window for `$HERDR_APP_HOME` (`h
 | Look at the block | `$NP shot <label>` | `<label>.block.png` (cropped block + footer) and `<label>.png` (whole window) |
 | Ask what's playing | `$NP get <label>` | JSON `{elected, sessions: [{title, artist, album, app, bundle, duration, elapsed, rate, timestamp, art, id}]}` |
 | List sessions | `$NP sessions` | one line per session, `*` on the elected one |
-| Click play/pause, or press `cmd-alt-p` | `$NP do toggle`, then `$NP wait-rate 1 5 <bundle>` or `wait-rate 0 5 <bundle>` | that session's `rate` flips, no other's; within ~1.5 s the icon flips and the clock moves |
+| Click play/pause, or press `cmd-alt-p` | `$NP do toggle`, then `$NP wait-rate 1 5 <bundle>` or `wait-rate 0 5 <bundle>` | that session's `rate` flips, no other's; the icon flips at once and the clock moves |
 | Click next / previous, or `cmd-alt-.` / `cmd-alt-,` | `$NP do next` / `$NP do previous` | `title` changes; artwork follows 1–2 s later |
-| Send to one session directly | `$NP send <cmd> [bundle]` | prints `1`; no bundle sends to the elected session; exits non-zero when that bundle has no active player |
+| Send to one session through MediaRemote | `$NP send <cmd> [bundle]` | prints `1`; no bundle sends to the elected session; exits 4 when that bundle has no active player (a non-elected Music or Spotify included: use `do` for those) |
 | Press `cmd-alt-s` | `$NP do cycle` | the block shows the next session; `now-playing.pinned` in `shared.json` names it |
 | Click the list button, or `cmd-alt-l` | `$NP do sessions` (opens the popup at the list button); close with `herdr-app do overlay.close` | a popup with one row per session, the shown one highlighted |
-| Click a session row | ask the person | nothing: the rows are read-only |
-| Check the bindings | `$NP keys` | `all bindings present` |
+| Click a session row | ask the person | a Music, Spotify or Podcasts row is shown in the block and the popup closes; any other row does nothing |
+| Check the bindings | `$NP keys` | `all bindings present in <home>/keys.json` |
 | Click the artwork | ask the person (no command equivalent), or `open -b <bundle>` as the same call | the player app comes to the front |
 | Narrow the sidebar | `$NP sidebar 120` (cleanup restores) | the block shows artwork + toggle only |
 | Leave a note in the transcript | `$NP log <text>` | appended to `transcript.md` |

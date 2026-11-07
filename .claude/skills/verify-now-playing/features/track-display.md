@@ -23,9 +23,9 @@ Preconditions:
 - `$NP doctor` exits 0 and its `backend get` line names a track.
 
 - **Read the session.** Run `$NP get display`. Note `title`, `artist`, `album`, `elapsed`, `duration`, `rate`.
-- **See it.** Run `$NP shot display`, open `display.block.png`. Title and subtitle equal the JSON; the right clock equals `duration` as m:ss; the left clock is within 2 s of `elapsed` (plus `now - timestamp` if `rate` is 1).
+- **See it.** Run `$NP shot display`, open `display.block.png`. Title and subtitle equal the JSON; the right clock equals `duration` as m:ss (h:mm:ss from an hour up); the left clock is within 2 s of `elapsed` (plus `now - timestamp` if `rate` is 1).
 - **Clocks advance while playing.** If `rate` is 1: `$NP shot tick1`, wait 3 s, `$NP shot tick2`. The left clock moved by about 3 s and the bar grew. If paused, the two clocks are equal.
-- **Other source.** Ask the person to play something in Spotify or a browser tab, then `$NP get source` + `$NP shot source`: `app` changes and the block follows.
+- **Other source.** Ask the person to start something in Spotify or a browser tab, then `$NP get source` + `$NP shot source`: the session that started playing becomes `now-playing.pinned` and the block shows it, whatever `elected` says.
 - **Nothing playing.** Only reachable after a fresh login or after quitting every player: ask the person; do not quit their apps. `$NP sessions` prints `nothing playing` and the block reads `Nothing playing`.
 
 ## Gotchas

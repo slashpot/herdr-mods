@@ -1,6 +1,6 @@
 # Install and reload
 
-`now-playing/install.sh` builds the MediaRemote helper and copies the mod into herdr-app's mods folder; the running window reloads it by itself, with svg icons intact. A broken edit keeps the last good version running and reports an error in `herdr-app status`.
+`now-playing/install.sh` builds the MediaRemote helper, copies the mod into herdr-app's mods folder (`$HERDR_APP_HOME/mods`, default `~/.config/herdr-app/mods`) and merges its hotkeys into `keys.json` (see hotkeys.md); the running window reloads it by itself, with svg icons intact. A broken edit keeps the last good version running and reports an error in `herdr-app status`.
 
 ## Sub-features
 
@@ -19,7 +19,7 @@ Preconditions:
 
 - Xcode Command Line Tools installed (`xcode-select -p` succeeds).
 
-- **Install.** Run `$NP install`. Ends with `built bin/libnowplaying.dylib` and a passing check, exit 0.
+- **Install.** Run `$NP install`. Prints `built bin/libnowplaying.dylib`, then `check passed: <mod dir>`, then the `keys:` lines; exit 0.
 - **Universal binary.** Run `lipo -archs ~/.config/herdr-app/mods/now-playing/bin/libnowplaying.dylib`. Prints `x86_64 arm64`.
 - **Healthy.** Run `$NP doctor`. Exit 0, `installed copy matches the repo`, `status errors: none`.
 - **Reload.** Make a visible, harmless edit only if the task is a change under test (for example the one being verified), install, wait 2 s, `$NP shot reloaded`. The block shows the change with no restart.

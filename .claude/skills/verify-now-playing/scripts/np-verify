@@ -5,7 +5,8 @@
 #   np-verify doctor                  read-only: is the running window + installed mod worth driving?
 #   np-verify get [label]             what MediaRemote reports now (the mod's exact backend call) -> <run>/get-<label>.json
 #   np-verify sessions                one line per session: bundle, rate, app, title; * marks the elected one
-#   np-verify send <cmd> [bundle]     play|pause|toggle|next|previous to one session (the mod's call), or to the elected one
+#   np-verify send <cmd> [bundle]     play|pause|toggle|next|previous to one session over MediaRemote, or to the elected one
+#                                     (the mod uses AppleScript for Music/Spotify: drive those with `do`)
 #   np-verify wait-rate <0|1> [secs] [bundle]
 #                                     poll get until that session's rate matches (default: elected, 5s); exits 1 on timeout
 #   np-verify keys                    does keys.json hold every binding the mod ships?
@@ -251,7 +252,7 @@ cleanup)
 run-dir) echo "$run" ;;
 
 *)
-  sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '2,21p' "$0" | sed 's/^# \{0,1\}//'
   exit 2
   ;;
 esac

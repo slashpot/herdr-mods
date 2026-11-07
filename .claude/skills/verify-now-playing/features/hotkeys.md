@@ -24,7 +24,7 @@ Preconditions:
 - `$NP sessions` and `$NP shot before` recorded.
 
 - **Install merge.** Run `$NP install` twice. The first run on a fresh `keys.json` prints `keys: added …` lines. The second prints `keys: nothing to add`, and `md5 ~/.config/herdr-app/keys.json` is the same before and after it.
-- **Check bindings.** Run `$NP keys`. It prints `all bindings present`.
+- **Check bindings.** Run `$NP keys`. It prints `all bindings present in <home>/keys.json`.
 - **Toggle.** Run `$NP do toggle`, then `$NP wait-rate 1 5 <bundle of the shown session>`. Only that session's `rate` changes in `$NP sessions`. Run `$NP do toggle` again to restore.
 - **Cycle.** Run `$NP do cycle`, wait 1 s, `$NP shot cycled`. The block shows the next session from `$NP sessions`. `now-playing.pinned` in `~/.config/herdr-app/shared.json` names its bundle.
 - **List.** Run `$NP do sessions`, wait 2 s, `$NP shot list`. `list.png` shows the popup next to the list button, at the bottom of the sidebar, with one row per session. Close it with `herdr-app do overlay.close`.
