@@ -1,10 +1,19 @@
 #!/bin/sh
-# Builds the helper, copies the mod into herdr-app's mods folder and adds the
-# mod's hotkeys to keys.json. herdr-app reloads both by itself.
+# Builds this OS's backend helper, copies the mod into herdr-app's mods folder
+# and adds the mod's hotkeys to keys.json. herdr-app reloads both by itself.
 # A copy, not a symlink: herdr-app doesn't load svg() icons through a symlinked mod folder.
 set -eu
 cd "$(dirname "$0")"
-./build.sh
+case "$(uname -s)" in
+  Darwin) platform=macos ;;
+  Linux) platform=linux ;;
+  *) platform=windows ;;
+esac
+if [ -x "native/$platform/build.sh" ]; then
+  "native/$platform/build.sh"
+else
+  echo "no backend for $platform yet; installing anyway, the block will say so"
+fi
 home="${HERDR_APP_HOME:-$HOME/.config/herdr-app}"
 dest="$home/mods/now-playing"
 [ -L "$dest" ] && rm "$dest"
@@ -15,7 +24,7 @@ herdr-app check "$dest"
 # Adds only keys the person hasn't bound, and writes nothing when there is
 # nothing to add: any edit makes keys.json theirs, which stops herdr-app from
 # upgrading its default shortcuts.
-/usr/bin/python3 - keys.json "$home/keys.json" <<'PY'
+python3 - keys.json "$home/keys.json" <<'PY'
 import json, os, sys
 ours_path, path = sys.argv[1], sys.argv[2]
 ours = json.load(open(ours_path))

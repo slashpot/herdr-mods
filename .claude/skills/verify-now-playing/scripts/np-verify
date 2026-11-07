@@ -38,7 +38,7 @@ scratch="$run/.scratch-art"   # artwork the verifier's `get` writes; not the mod
 mkdir -p "$run"
 
 log() { printf '%s  %s\n' "$(date +%H:%M:%S)" "$*" >> "$run/transcript.md"; }
-backend() { /usr/bin/perl "$mod/native/nowplaying.pl" "$mod/bin/libnowplaying.dylib" "$@"; }
+backend() { /usr/bin/perl "$mod/native/macos/nowplaying.pl" "$mod/native/macos/bin/libnowplaying.dylib" "$@"; }
 
 # Reads a get JSON on stdin. `sessions` prints one line per session; `rate [bundle]`
 # prints 0/1 for that session (default: elected), or "none" when it isn't there.
@@ -153,7 +153,7 @@ doctor)
   [ -d "$mod" ] && [ ! -L "$mod" ] && ok "installed as a copy at $mod" || bad "mod missing or a symlink at $mod (run: np-verify install)"
   d=$(diff -rq -x bin -x install.sh -x .gitignore -x .git "$src" "$mod" 2>&1 || true)
   [ -z "$d" ] && ok "installed copy matches the repo" || bad "installed copy differs from the repo (run: np-verify install): $d"
-  if [ -f "$mod/bin/libnowplaying.dylib" ] && [ ! "$src/native/nowplaying.m" -nt "$mod/bin/libnowplaying.dylib" ]; then
+  if [ -f "$mod/native/macos/bin/libnowplaying.dylib" ] && [ ! "$src/native/macos/nowplaying.m" -nt "$mod/native/macos/bin/libnowplaying.dylib" ]; then
     ok "dylib built and newer than nowplaying.m"
   else
     bad "dylib missing or older than nowplaying.m (run: np-verify install)"

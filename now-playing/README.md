@@ -8,7 +8,7 @@ A herdr-app sidebar block that controls what the system is playing, such as Appl
 ./install.sh
 ```
 
-This builds `bin/libnowplaying.dylib` with clang (arm64 + x86_64, needs the Xcode Command Line Tools), copies the mod into herdr-app's mods folder, runs `herdr-app check`, and adds the mod's hotkeys to `keys.json`. herdr-app reloads the mod and the keys by itself.
+On macOS this runs `native/macos/build.sh`, which builds `native/macos/bin/libnowplaying.dylib` with clang (arm64 + x86_64, needs the Xcode Command Line Tools). It then copies the mod into herdr-app's mods folder, runs `herdr-app check`, and adds the mod's hotkeys to `keys.json`. herdr-app reloads the mod and the keys by itself.
 
 The mod uses the `main-now-playing` layout. It is a clone of `main` with a 132px `now-playing` block between `agents` and `sidebar-footer`.
 
@@ -34,12 +34,19 @@ herdr-app do now-playing.toggle
 
 ## Design
 
-The UI knows one data shape. Each OS gets its own backend that produces it. `get` returns every app with a session and the one the OS elected:
+The UI knows one data shape. Each OS gets its own backend in `native/<platform>/`, and everything that knows the OS lives in that folder: the `backend.js` that `main.js` imports, its native helper, and the `build.sh` that `install.sh` runs. `main.js` picks the backend by `window().platform`. A backend exports:
 
 ```
-{ elected: bundle | null, sessions: Track[] }
-Track = { title, artist, album, app, bundle, duration, elapsed, rate, timestamp, art, id }
+get()                 -> { elected: bundle | null, sessions: Track[] }
+send(command, bundle)    command: play | pause | toggle | next | previous
+activate(track)          brings the track's app to the front
+settleMs                 how long the OS takes to report a command
+Track = { title, artist, album, app, bundle, duration, elapsed, rate, timestamp, art, id, controllable, pickable }
 ```
+
+- `bundle` is the backend's stable key for an app. On macOS it is the bundle id. `elected` is the app the OS sends untargeted commands to, or null where the OS has no such app.
+- `timestamp` is when `elapsed` was read, in Unix seconds. `art` is an `image()` path relative to `appHome()`, or empty.
+- `controllable` is false for an app the OS lists but won't take commands from. `pickable` marks the list rows that switch the block on click.
 
 - The block shows `current()`: the pinned session, else the elected one, else one that is playing, else the first.
 - The pin is `shared("now-playing.pinned")`, a bundle id. The block and the list popup are two copies of the mod, and shared state keeps them in agreement. A session that starts playing becomes the pick by itself, so the block follows whatever you just started. A pin set by `cycle` holds until another session starts. When the picked app's session goes away, the pick is cleared.
@@ -47,7 +54,7 @@ Track = { title, artist, album, app, bundle, duration, elapsed, rate, timestamp,
 - The list popup is the same mod opened with `props: { view: "sessions" }`. It polls the backend itself. Only the sidebar copy reads `nextCommand()`, so a key never acts twice.
 - The marquee measures the clip box and the unwrapped text with `on_size_change`, since gpui-kit has no text measuring. Text wider than its box rests 1.5 s at its start, glides to its end at a constant 30 px/s through a native `.transition("left")`, rests again and glides back. A timer only turns it around, once per leg. The first build used `.loop("left")` with ease-in-out: its peak speed was about three times the average and its ends crawled a pixel at a time, which read as stutter.
 - `cmd-alt-l` opens the list as the same popup the list button opens, placed where the list button sits. That spot is computed from the layout's block sizes and the viewport.
-- macOS is the only backend in v1. It uses MediaRemote.
+- macOS is the only backend in v1. It lives in `native/macos/` and uses MediaRemote.
 - Linux (MPRIS) and Windows (GSMTC) come later, once there are users on them.
 - We build our own helper instead of requiring `brew install media-control`, so the mod has no package dependency.
 - The Spotify Web API was rejected. Since February 2026 its dev-mode rules cap an app at 5 users, and both the owner and the controlling user need Premium.
@@ -55,11 +62,11 @@ Track = { title, artist, album, app, bundle, duration, elapsed, rate, timestamp,
 ## How the macOS backend works
 
 - Since macOS 15.4, MediaRemote checks entitlements. A normally compiled binary gets empty data.
-- `/usr/bin/perl` is entitled. `native/nowplaying.pl` loads our dylib into it through DynaLoader and calls `nowplaying_main`. The technique comes from ungive/mediaremote-adapter.
+- `/usr/bin/perl` is entitled. `native/macos/nowplaying.pl` loads our dylib into it through DynaLoader and calls `nowplaying_main`. The technique comes from ungive/mediaremote-adapter.
 - `get [art-dir]` lists clients with `MRMediaRemoteGetNowPlayingClients` and reads each one with `MRMediaRemoteGetNowPlayingInfoForPlayer` on a path from `MRNowPlayingPlayerPathCreate`. A client without a title is left out. `elected` is the bundle of `MRMediaRemoteGetNowPlayingApplicationPID`.
 - Artwork is one file per session, `<bundle>-<content hash>.jpg|png`. A new picture is a new path, so `image()` never shows a stale cache. After each `get`, files no session uses are removed, except a session's last one while its next picture is still on the way.
 - `send <command-id> [bundle]` sends 0 play, 1 pause, 2 toggle, 4 next, 5 previous. With a bundle it uses `MRMediaRemoteSendCommandToPlayer` on that app's active player path. Without one it uses `MRMediaRemoteSendCommand`, which goes to the elected app.
-- Music and Spotify skip MediaRemote for commands. `main.js` sends them `osascript -e 'tell application id "<bundle>" to playpause'` (or `play`, `pause`, `next track`, `previous track`) and marks them controllable, because AppleScript reaches them whichever app is elected. If the script fails, such as when the person denied Automation access, the send falls back to MediaRemote.
+- Music and Spotify skip MediaRemote for commands. `backend.js` sends them `osascript -e 'tell application id "<bundle>" to playpause'` (or `play`, `pause`, `next track`, `previous track`) and marks them controllable, because AppleScript reaches them whichever app is elected. If the script fails, such as when the person denied Automation access, the send falls back to MediaRemote.
 - Verified on macOS 27.2: reading with Apple Music, Spotify and Chrome, targeted control with Apple Music, and AppleScript control of Music and Spotify while another app is elected. Podcasts: picked from the list, dimmed while not elected, and paused and resumed through MediaRemote while elected.
 
 ## Gotchas

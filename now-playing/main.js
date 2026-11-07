@@ -1,26 +1,32 @@
 // Now Playing: a remote for whatever the system is playing (Apple Music,
 // Spotify, YouTube in a browser, ...), not tied to any one player.
 //
-// The UI only knows the track shape below; where it comes from is a backend
-// per OS. macOS is the only backend so far: MediaRemote through /usr/bin/perl
-// (see native/nowplaying.m). A backend's get() returns every app that has a
-// session, plus the one the OS elected:
-//   { elected: bundle | null, sessions: Track[] }
-//   Track = { title, artist, album, app, bundle, duration, elapsed, rate, timestamp, art, id, controllable }
-// controllable is false for an app the OS lists but won't take commands for
-// (a browser tab that isn't the elected player): its controls are dimmed.
+// The UI only knows the backend shape below. Each OS has its own backend under
+// native/<platform>/backend.js, and nothing outside that folder knows the OS.
+//   backend.get()                    -> { elected: bundle | null, sessions: Track[] }
+//   backend.send(command, bundle)    command is one of COMMANDS
+//   backend.activate(track)          brings the track's app to the front
+//   backend.settleMs                 how long the OS takes to report a command
+//   Track = { title, artist, album, app, bundle, duration, elapsed, rate,
+//             timestamp, art, id, controllable, pickable }
+// bundle is the backend's stable key for an app (on macOS its bundle id).
+// elected is the app the OS routes untargeted commands to, or null if the OS has none.
+// timestamp is when elapsed was read, in Unix seconds. art is an image() path
+// relative to appHome(), or empty. controllable is false for an app the OS lists
+// but won't take commands for: its controls are dimmed. pickable marks the rows
+// that switch the block on click.
 // The block shows current(): the session last cycled to or last started playing
 // (shared PIN, so every copy agrees), else the elected one, else one that is playing.
 
 import { View, div, image, svg } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
-import { exec, theme, appHome, window, layout, shared, setShared, props, nextCommand, openOverlay, closeOverlay } from "herdr";
+import { theme, window, layout, shared, setShared, props, nextCommand, openOverlay, closeOverlay } from "herdr";
+import macos from "./native/macos/backend.js";
 
+const BACKENDS = { macos };
 const MOD = "mods/now-playing";
-const ART_DIR = "data/now-playing"; // under appHome(); image() paths are relative to it
 const POLL_MS = 1500;
-const SETTLE_MS = 400;
-const COMMAND = { play: 0, pause: 1, toggle: 2, next: 4, previous: 5 };
+const COMMANDS = new Set(["play", "pause", "toggle", "next", "previous"]);
 const PIN = "now-playing.pinned";
 const LIST = "now-playing.list"; // the open list overlay's id, so a second press closes it
 const MARQUEE_PX_PER_S = 30;
@@ -40,39 +46,6 @@ function trail(node, is, up = []) {
 
 // The sidebar collapses to a rail by width (same rule as workspace-chrome).
 const narrow = () => (trail(layout(), (n) => n.id === "sidebar")?.at(-1)?.size?.px ?? Infinity) < 160;
-
-// MediaRemote only commands the elected app. These apps take the same commands
-// over AppleScript whichever app is elected, so they always go that way.
-const SCRIPTED = new Set(["com.apple.Music", "com.spotify.client"]);
-// Rows of these apps switch the block on click. Podcasts has no AppleScript,
-// so its controls still work only while it is elected.
-const PICKABLE = new Set([...SCRIPTED, "com.apple.podcasts"]);
-const VERB = { play: "play", pause: "pause", toggle: "playpause", next: "next track", previous: "previous track" };
-
-const macos = {
-  args(...rest) {
-    const home = appHome();
-    return [`${home}/${MOD}/native/nowplaying.pl`, `${home}/${MOD}/bin/libnowplaying.dylib`, ...rest];
-  },
-  async get() {
-    const r = await exec("/usr/bin/perl", this.args("get", `${appHome()}/${ART_DIR}`));
-    if (r.code !== 0) throw new Error(r.stderr.trim() || `exit ${r.code}`);
-    const read = JSON.parse(r.stdout);
-    for (const s of read.sessions) if (SCRIPTED.has(s.bundle)) s.controllable = true;
-    return read;
-  },
-  async send(command, bundle) {
-    // A denied Automation permission fails the script; MediaRemote still reaches the elected app.
-    if (SCRIPTED.has(bundle)) {
-      const r = await exec("/usr/bin/osascript", ["-e", `tell application id "${bundle}" to ${VERB[command]}`]);
-      if (r.code === 0) return;
-    }
-    await exec("/usr/bin/perl", this.args("send", String(COMMAND[command]), ...(bundle ? [bundle] : [])));
-  },
-  async activate(track) {
-    if (track?.bundle) await exec("open", ["-b", track.bundle]);
-  },
-};
 
 const sameTrack = (a, b) => a && b && a.title === b.title && a.artist === b.artist && a.bundle === b.bundle;
 
@@ -98,7 +71,8 @@ export default class NowPlaying extends View {
     this.error = null;
     this.loading = true;
     this.settled = 0; // reads that start before this time are dropped
-    this.backend = window()?.platform === "macos" ? macos : null;
+    this.platform = window()?.platform;
+    this.backend = BACKENDS[this.platform] ?? null;
     if (!this.backend) return;
     this.refresh(cx);
     cx.timer.every(POLL_MS, (cx) => this.refresh(cx));
@@ -155,7 +129,7 @@ export default class NowPlaying extends View {
   }
 
   hotkey(name, cx) {
-    if (name in COMMAND) this.command(name, cx);
+    if (COMMANDS.has(name)) this.command(name, cx);
     else if (name === "cycle") this.cycle();
     else if (name === "sessions") this.toggleSessions(this.listAnchor());
   }
@@ -215,9 +189,8 @@ export default class NowPlaying extends View {
       try {
         await this.backend.send(name, target?.bundle);
       } finally {
-        // MediaRemote shows a pause about 100 ms after the player takes it.
-        this.settled = Date.now() + SETTLE_MS;
-        cx.timer.after(SETTLE_MS, (cx) => this.refresh(cx));
+        this.settled = Date.now() + this.backend.settleMs;
+        cx.timer.after(this.backend.settleMs, (cx) => this.refresh(cx));
       }
     });
   }
@@ -293,7 +266,7 @@ export default class NowPlaying extends View {
     const t = theme();
     return div().size(size).flex_none().rounded(size > 30 ? 6 : 4).overflow_hidden().bg(t.hover)
       .flex().items_center().justify_center().text_color(t.dim)
-      .child(track?.art ? image(`${ART_DIR}/${track.art}`).size(size) : svg(`${MOD}/icons/music.svg`).size(size * 0.45));
+      .child(track?.art ? image(track.art).size(size) : svg(`${MOD}/icons/music.svg`).size(size * 0.45));
   }
 
   artwork(size) {
@@ -309,7 +282,7 @@ export default class NowPlaying extends View {
     const playing = Boolean(track.rate);
     return h_flex().id(`session-${track.bundle}`).h(ROW_PX).flex_none().px(6).gap(8).items_center().rounded(6)
       .when(selected, (el) => el.bg(t.selected))
-      .when(PICKABLE.has(track.bundle), (el) => el.cursor_pointer().hover((s) => s.bg(t.hover))
+      .when(Boolean(track.pickable), (el) => el.cursor_pointer().hover((s) => s.bg(t.hover))
         .on_click(() => this.pick(track.bundle)))
       .child(this.cover(track, 28))
       .child(v_flex().flex_1().min_w(0)
@@ -341,7 +314,7 @@ export default class NowPlaying extends View {
     const t = theme();
     if (this.listing) return this.renderSessions();
     this.viewport = globalThis.window.viewport_size();
-    if (!this.backend) return this.message("Now Playing supports macOS only for now");
+    if (!this.backend) return this.message(`Now Playing has no backend for ${this.platform ?? "this platform"} yet`);
     if (this.error) return this.message(`Now Playing: ${this.error}`);
     const track = this.current();
     if (!track) return this.message(this.loading ? "" : "Nothing playing");

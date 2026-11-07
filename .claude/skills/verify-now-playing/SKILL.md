@@ -1,11 +1,11 @@
 ---
 name: verify-now-playing
-description: Verify the herdr-app "Now Playing" mod (now-playing/, a macOS media remote in the herdr-app sidebar) in the person's running Herdr window — install it, doctor the instance, drive play/pause/next/previous through the mod's own MediaRemote backend, and capture window shots of the sidebar block as proof. Use after any change to now-playing/main.js, native/, icons/ or the main-now-playing layout, or when asked to prove the mod works.
+description: Verify the herdr-app "Now Playing" mod (now-playing/, a macOS media remote in the herdr-app sidebar) in the person's running Herdr window — install it, doctor the instance, drive play/pause/next/previous through the mod's own MediaRemote backend, and capture window shots of the sidebar block as proof. Use after any change to now-playing/main.js, native/macos/, icons/ or the main-now-playing layout, or when asked to prove the mod works.
 ---
 
 # Verify the Now Playing mod
 
-The surface is a block at the bottom of herdr-app's sidebar (layout `main-now-playing`): artwork, a title and `artist — album` that scroll when too long, a progress bar with clocks, three icon buttons (previous, play/pause toggle, next) and, with several sessions, a list button that opens a popup of every session. Global keys in `keys.json` drive the same commands through the mod's `nextCommand()`. Its data comes from macOS MediaRemote through `/usr/bin/perl` loading `bin/libnowplaying.dylib` (`native/nowplaying.pl`). The only other surface is that backend CLI, which the helper wraps.
+The surface is a block at the bottom of herdr-app's sidebar (layout `main-now-playing`): artwork, a title and `artist — album` that scroll when too long, a progress bar with clocks, three icon buttons (previous, play/pause toggle, next) and, with several sessions, a list button that opens a popup of every session. Global keys in `keys.json` drive the same commands through the mod's `nextCommand()`. Its data comes from macOS MediaRemote through `/usr/bin/perl` loading `native/macos/bin/libnowplaying.dylib` (`native/macos/nowplaying.pl`), wrapped by `native/macos/backend.js`. The only other surface is that backend CLI, which the helper wraps.
 
 All commands below run from the repo root. The helper is
 `.claude/skills/verify-now-playing/scripts/np-verify` (call it `NP` below):

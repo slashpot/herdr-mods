@@ -4,7 +4,7 @@
 
 ## Sub-features
 
-- `install-build` `build.sh` produces a universal (arm64 + x86_64) `bin/libnowplaying.dylib`.
+- `install-build` `native/macos/build.sh` produces a universal (arm64 + x86_64) `native/macos/bin/libnowplaying.dylib`.
 - `install-copy` the mod lands as a real folder (not a symlink) and `herdr-app check` passes.
 - `install-reload` the window picks up a change without restart.
 - `install-icons` play, pause, skip and note icons render (they don't through a symlinked folder).
@@ -19,8 +19,8 @@ Preconditions:
 
 - Xcode Command Line Tools installed (`xcode-select -p` succeeds).
 
-- **Install.** Run `$NP install`. Prints `built bin/libnowplaying.dylib`, then `check passed: <mod dir>`, then the `keys:` lines; exit 0.
-- **Universal binary.** Run `lipo -archs ~/.config/herdr-app/mods/now-playing/bin/libnowplaying.dylib`. Prints `x86_64 arm64`.
+- **Install.** Run `$NP install`. Prints `built native/macos/bin/libnowplaying.dylib`, then `check passed: <mod dir>`, then the `keys:` lines; exit 0.
+- **Universal binary.** Run `lipo -archs ~/.config/herdr-app/mods/now-playing/native/macos/bin/libnowplaying.dylib`. Prints `x86_64 arm64`.
 - **Healthy.** Run `$NP doctor`. Exit 0, `installed copy matches the repo`, `status errors: none`.
 - **Reload.** Make a visible, harmless edit only if the task is a change under test (for example the one being verified), install, wait 2 s, `$NP shot reloaded`. The block shows the change with no restart.
 - **Icons.** In the latest `.block.png`, the three control icons are drawn (not blank squares).
