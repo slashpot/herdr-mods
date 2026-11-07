@@ -10,4 +10,5 @@ Mods for herdr-app, the GUI app. They are not herdr CLI/TUI plugins. A mod is JS
 
 - Install a mod by copying, never by symlinking. Each mod's `install.sh` does this.
 - Prove a change in the running Herdr window with the matching verify skill, such as `.claude/skills/verify-now-playing/`.
+- Commit verified work straight to `main` and push. Use no branch and no PR. Work that is not verified yet does not go to `main`.
 - Open work lives in `TODO.md`.
