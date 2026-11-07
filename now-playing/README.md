@@ -60,7 +60,7 @@ Track = { title, artist, album, app, bundle, duration, elapsed, rate, timestamp,
 - Artwork is one file per session, `<bundle>-<content hash>.jpg|png`. A new picture is a new path, so `image()` never shows a stale cache. After each `get`, files no session uses are removed, except a session's last one while its next picture is still on the way.
 - `send <command-id> [bundle]` sends 0 play, 1 pause, 2 toggle, 4 next, 5 previous. With a bundle it uses `MRMediaRemoteSendCommandToPlayer` on that app's active player path. Without one it uses `MRMediaRemoteSendCommand`, which goes to the elected app.
 - Music and Spotify skip MediaRemote for commands. `main.js` sends them `osascript -e 'tell application id "<bundle>" to playpause'` (or `play`, `pause`, `next track`, `previous track`) and marks them controllable, because AppleScript reaches them whichever app is elected. If the script fails, such as when the person denied Automation access, the send falls back to MediaRemote.
-- Verified on macOS 27.2: reading with Apple Music, Spotify and Chrome, targeted control with Apple Music, and AppleScript control of Music and Spotify while another app is elected.
+- Verified on macOS 27.2: reading with Apple Music, Spotify and Chrome, targeted control with Apple Music, and AppleScript control of Music and Spotify while another app is elected. Podcasts: picked from the list, dimmed while not elected, and paused and resumed through MediaRemote while elected.
 
 ## Gotchas
 
