@@ -19,6 +19,7 @@ import { exec, theme, appHome, window, layout, shared, setShared, props, nextCom
 const MOD = "mods/now-playing";
 const ART_DIR = "data/now-playing"; // under appHome(); image() paths are relative to it
 const POLL_MS = 1500;
+const SETTLE_MS = 400;
 const COMMAND = { play: 0, pause: 1, toggle: 2, next: 4, previous: 5 };
 const PIN = "now-playing.pinned";
 const LIST = "now-playing.list"; // the open list overlay's id, so a second press closes it
@@ -96,6 +97,7 @@ export default class NowPlaying extends View {
     this.scrolls = new Map(); // marquee id -> { text, overflow, end, task }
     this.error = null;
     this.loading = true;
+    this.settled = 0; // reads that start before this time are dropped
     this.backend = window()?.platform === "macos" ? macos : null;
     if (!this.backend) return;
     this.refresh(cx);
@@ -123,7 +125,9 @@ export default class NowPlaying extends View {
     this.busy = true;
     cx.spawn(async (cx) => {
       try {
+        const asked = Date.now();
         const { elected, sessions } = await this.backend.get();
+        if (asked < this.settled) return;
         const last = new Map(this.sessions.map((s) => [s.bundle, s]));
         // Artwork lands a second or two after a track change: keep the last
         // picture while it's the same track, rather than flashing the placeholder.
@@ -142,10 +146,11 @@ export default class NowPlaying extends View {
         else if (pinned && !sessions.some((s) => s.bundle === pinned)) setShared(PIN, null);
       } catch (e) {
         this.error = String(e?.message ?? e);
+      } finally {
+        this.busy = false;
+        this.loading = false;
+        cx.notify();
       }
-      this.busy = false;
-      this.loading = false;
-      cx.notify();
     });
   }
 
@@ -197,6 +202,8 @@ export default class NowPlaying extends View {
   command(name, cx) {
     const target = this.current();
     if (target?.controllable === false) return;
+    // A read that started before the player caught up would undo the flip below.
+    this.settled = Infinity;
     // Answer the click at once; the next read confirms it.
     if (target && (name === "toggle" || name === "play" || name === "pause")) {
       const playing = name === "toggle" ? !target.rate : name === "play";
@@ -205,8 +212,13 @@ export default class NowPlaying extends View {
       cx.notify();
     }
     cx.spawn(async (cx) => {
-      await this.backend.send(name, target?.bundle);
-      cx.timer.after(400, (cx) => this.refresh(cx));
+      try {
+        await this.backend.send(name, target?.bundle);
+      } finally {
+        // MediaRemote shows a pause about 100 ms after the player takes it.
+        this.settled = Date.now() + SETTLE_MS;
+        cx.timer.after(SETTLE_MS, (cx) => this.refresh(cx));
+      }
     });
   }
 
