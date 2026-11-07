@@ -176,11 +176,14 @@ export default class NowPlaying extends View {
   command(name, cx) {
     const target = this.current();
     if (target?.controllable === false) return;
+    // Toggle does what the button shows. A blind toggle on a block that hasn't
+    // seen a pause made in the player yet would start playback instead.
+    if (target && name === "toggle") name = target.rate ? "pause" : "play";
     // A read that started before the player caught up would undo the flip below.
     this.settled = Infinity;
     // Answer the click at once; the next read confirms it.
-    if (target && (name === "toggle" || name === "play" || name === "pause")) {
-      const playing = name === "toggle" ? !target.rate : name === "play";
+    if (target && (name === "play" || name === "pause")) {
+      const playing = name === "play";
       const flipped = { ...target, elapsed: position(target), timestamp: Date.now() / 1000, rate: playing ? 1 : 0 };
       this.sessions = this.sessions.map((s) => (s === target ? flipped : s));
       cx.notify();
