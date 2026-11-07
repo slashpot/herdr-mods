@@ -37,3 +37,4 @@ Preconditions:
 - Every copy of the mod receives the command. Only the sidebar block reads `nextCommand()`; the list overlay never does.
 - Any edit to `keys.json` makes the file the person's, and herdr-app then stops adding new default shortcuts on upgrade. That is why install writes nothing when nothing is new.
 - Install never replaces a key the person bound, and skips a binding whose action already has another key.
+- `list-toggle` needs the window to itself. Esc anywhere in the Herdr window, such as in nvim, closes the top popup, so a press checked 0.6 s later reads `want 1, got 0`. Ask the person to stay out of the window, and rerun before calling a failure real.
