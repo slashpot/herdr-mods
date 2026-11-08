@@ -1,12 +1,13 @@
 #!/bin/sh
 # np-verify: drive and observe the herdr-app "Now Playing" mod for verification.
 #
-#   np-verify install                 build the dylib and copy the mod into herdr-app (now-playing/install.sh)
+#   np-verify install                 build/check the backend helper and copy the mod into herdr-app (now-playing/install.sh)
 #   np-verify doctor                  read-only: is the running window + installed mod worth driving?
-#   np-verify get [label]             what MediaRemote reports now (the mod's exact backend call) -> <run>/get-<label>.json
+#   np-verify get [label]             what the OS reports now (the mod's exact backend call) -> <run>/get-<label>.json
 #   np-verify sessions                one line per session: bundle, rate, app, title; * marks the elected one
-#   np-verify send <cmd> [bundle]     play|pause|toggle|next|previous to one session over MediaRemote, or to the elected one
-#                                     (the mod uses AppleScript for Music/Spotify: drive those with `do`)
+#   np-verify send <cmd> [bundle]     play|pause|toggle|next|previous to one session through the helper, or to the elected one
+#                                     (macOS: the mod uses AppleScript for Music/Spotify, drive those with `do`;
+#                                     Windows: GSMTC reaches every session, bundle is the AUMID)
 #   np-verify wait-rate <0|1> [secs] [bundle]
 #                                     poll get until that session's rate matches (default: elected, 5s); exits 1 on timeout
 #   np-verify keys                    does keys.json hold every binding the mod ships?
@@ -19,7 +20,16 @@
 #
 # Evidence: $REPO/.verify/now-playing/<RUN_ID>/ (git-ignored). RUN_ID defaults to the
 # first call's timestamp and is remembered in .verify/now-playing/current until cleanup.
+#
+# Runs on macOS (system python3, perl, sips, osascript) and on Windows in Git Bash
+# (python3 or python, Windows PowerShell 5.1).
 set -eu
+
+case "$(uname -s)" in
+  Darwin) os=macos; PY=/usr/bin/python3 ;;
+  Linux) os=linux; PY=python3 ;;
+  *) os=windows; PY=python3; command -v python3 >/dev/null 2>&1 && python3 -c '' >/dev/null 2>&1 || PY=python ;;
+esac
 
 here=$(cd "$(dirname "$0")" && pwd)
 repo=$(cd "$here/../../../.." && pwd)
@@ -38,12 +48,21 @@ scratch="$run/.scratch-art"   # artwork the verifier's `get` writes; not the mod
 mkdir -p "$run"
 
 log() { printf '%s  %s\n' "$(date +%H:%M:%S)" "$*" >> "$run/transcript.md"; }
-backend() { /usr/bin/perl "$mod/native/macos/nowplaying.pl" "$mod/native/macos/bin/libnowplaying.dylib" "$@"; }
+# The mod's own helper, called the way its backend.js calls it.
+backend() {
+  if [ "$os" = windows ]; then
+    if [ "${1:-}" = get ]; then dir=$(cygpath -w "$2"); shift 2; set -- get "$dir" "$@"; fi
+    powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$(cygpath -w "$mod/native/windows/nowplaying.ps1")" "$@" | tr -d '
+'
+  else
+    /usr/bin/perl "$mod/native/macos/nowplaying.pl" "$mod/native/macos/bin/libnowplaying.dylib" "$@"
+  fi
+}
 
 # Reads a get JSON on stdin. `sessions` prints one line per session; `rate [bundle]`
 # prints 0/1 for that session (default: elected), or "none" when it isn't there.
 summarize() {
-  /usr/bin/python3 -c '
+  "$PY" -c '
 import json, sys
 d = json.load(sys.stdin)
 mode, want = sys.argv[1], (sys.argv[2] if len(sys.argv) > 2 else "")
@@ -61,7 +80,7 @@ else:
 
 # Prints each binding in now-playing/keys.json that $home/keys.json lacks; empty = all present.
 missing_keys() {
-  /usr/bin/python3 - "$src/keys.json" "$home/keys.json" <<'EOF3'
+  "$PY" - "$src/keys.json" "$home/keys.json" <<'EOF3'
 import json, sys
 ours = json.load(open(sys.argv[1]))
 try: theirs = json.load(open(sys.argv[2]))
@@ -74,15 +93,18 @@ for section, binds in ours.items():
 EOF3
 }
 
+# What `send` hands the helper: an MRCommand id on macOS, the command's name on Windows.
 cmd_id() {
-  case "$1" in play) echo 0;; pause) echo 1;; toggle) echo 2;; next) echo 4;; previous) echo 5;;
+  case "$1" in play) i=0;; pause) i=1;; toggle) i=2;; next) i=4;; previous) i=5;;
     *) echo "unknown command: $1 (play|pause|toggle|next|previous)" >&2; exit 2;; esac
+  if [ "$os" = windows ]; then echo "$1"; else echo "$i"; fi
 }
 
 # Prints "x y w h" in shot pixels for the now-playing block: bottom-left of the window,
 # sidebar width wide, from the top of the now-playing block to the window bottom (footer included).
+# Layout px are scaled by herdr's zoom (status "zoom") and then by the display (shot / window.json bounds).
 block_rect() {
-  /usr/bin/python3 - "$home" "$1" <<'EOF'
+  "$PY" - "$home" "$1" <<'EOF'
 import json, sys, subprocess
 home, shot_h = sys.argv[1], int(sys.argv[2])
 status = json.loads(subprocess.check_output(["herdr-app", "status"]))
@@ -97,7 +119,7 @@ sidebar = find(layout, "sidebar")
 col = sidebar["children"]
 i = next(k for k, c in enumerate(col) if c.get("content", {}).get("mod") == "now-playing")
 below = sum(c["size"]["px"] for c in col[i:] if "px" in c.get("size", {}))
-scale = shot_h / win["bounds"][3]  # bounds are [x, y, w, h] in logical px
+scale = shot_h / win["bounds"][3] * status.get("zoom", 1)  # bounds are [x, y, w, h] in logical px
 # live sidebar width may differ from the file after a resize: ask the layout state if present
 w = sidebar["size"].get("px", 268)
 try:
@@ -111,7 +133,7 @@ EOF
 
 # Current sidebar width in logical px (a resize click wins over the layout file).
 sidebar_px() {
-  /usr/bin/python3 - "$home" <<'EOF2'
+  "$PY" - "$home" <<'EOF2'
 import json, sys, subprocess
 home = sys.argv[1]
 name = json.loads(subprocess.check_output(["herdr-app", "status"]))["layout"]
@@ -137,11 +159,18 @@ doctor)
   fail=0
   ok()  { echo "ok    $*"; }
   bad() { echo "FAIL  $*"; fail=1; }
-  [ "$(uname)" = Darwin ] && ok "macOS $(sw_vers -productVersion)" || bad "not macOS: only the macOS backend exists"
+  case "$os" in
+  macos) ok "macOS $(sw_vers -productVersion)" ;;
+  windows)
+    v=$(powershell.exe -NoProfile -NonInteractive -Command '$PSVersionTable.PSVersion.ToString()' 2>&1 | tr -d '
+') || v=""
+    case "$v" in 5.1*) ok "Windows, Windows PowerShell $v" ;; *) bad "Windows PowerShell 5.1 (powershell.exe) not found: $v" ;; esac ;;
+  *) bad "$os: no backend for this OS" ;;
+  esac
   command -v herdr-app >/dev/null && ok "herdr-app $(herdr-app --version | awk '{print $2}')" || bad "herdr-app not on PATH"
   if status=$(herdr-app status 2>&1); then
-    layout=$(printf '%s' "$status" | /usr/bin/python3 -c 'import json,sys; print(json.load(sys.stdin)["layout"])')
-    errors=$(printf '%s' "$status" | /usr/bin/python3 -c 'import json,sys; print(json.dumps(json.load(sys.stdin)["errors"]))')
+    layout=$(printf '%s' "$status" | "$PY" -c 'import json,sys; print(json.load(sys.stdin)["layout"])')
+    errors=$(printf '%s' "$status" | "$PY" -c 'import json,sys; print(json.dumps(json.load(sys.stdin)["errors"]))')
     ok "window running (home $home), layout $layout"
     [ "$errors" = "[]" ] && ok "status errors: none" || bad "status errors: $errors"
     grep -q '"mod": *"now-playing"' "$home/layouts/$layout.json" \
@@ -151,9 +180,13 @@ doctor)
     bad "no running window for $home: $status"
   fi
   [ -d "$mod" ] && [ ! -L "$mod" ] && ok "installed as a copy at $mod" || bad "mod missing or a symlink at $mod (run: np-verify install)"
-  d=$(diff -rq -x bin -x install.sh -x .gitignore -x .git "$src" "$mod" 2>&1 || true)
+  # herdr-app on Windows rewrites gpui-kit.d.ts with CRLF line ends.
+  crlf=""; [ "$os" = windows ] && crlf=--strip-trailing-cr
+  d=$(diff -rq $crlf -x bin -x install.sh -x .gitignore -x .git "$src" "$mod" 2>&1 || true)
   [ -z "$d" ] && ok "installed copy matches the repo" || bad "installed copy differs from the repo (run: np-verify install): $d"
-  if [ -f "$mod/native/macos/bin/libnowplaying.dylib" ] && [ ! "$src/native/macos/nowplaying.m" -nt "$mod/native/macos/bin/libnowplaying.dylib" ]; then
+  if [ "$os" = windows ]; then
+    :  # nothing to build: nowplaying.ps1 runs as copied
+  elif [ -f "$mod/native/macos/bin/libnowplaying.dylib" ] && [ ! "$src/native/macos/nowplaying.m" -nt "$mod/native/macos/bin/libnowplaying.dylib" ]; then
     ok "dylib built and newer than nowplaying.m"
   else
     bad "dylib missing or older than nowplaying.m (run: np-verify install)"
@@ -216,9 +249,17 @@ do)
 shot)
   label="${2:?usage: np-verify shot <label>}"
   herdr-app shot "$run/$label.png" >/dev/null
-  h=$(/usr/bin/sips -g pixelHeight "$run/$label.png" | awk '/pixelHeight/{print $2}')
-  set -- $(block_rect "$h")
-  /usr/bin/osascript -l JavaScript "$here/crop.js" "$run/$label.png" "$run/$label.block.png" "$1" "$2" "$3" "$4" >/dev/null
+  if [ "$os" = windows ]; then
+    crop() { powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$(cygpath -w "$here/crop.ps1")" "$@" | tr -d '
+'; }
+    h=$(crop "$(cygpath -w "$run/$label.png")")
+    set -- $(block_rect "$h")
+    crop "$(cygpath -w "$run/$label.png")" "$(cygpath -w "$run/$label.block.png")" "$1" "$2" "$3" "$4" >/dev/null
+  else
+    h=$(/usr/bin/sips -g pixelHeight "$run/$label.png" | awk '/pixelHeight/{print $2}')
+    set -- $(block_rect "$h")
+    /usr/bin/osascript -l JavaScript "$here/crop.js" "$run/$label.png" "$run/$label.block.png" "$1" "$2" "$3" "$4" >/dev/null
+  fi
   echo "$run/$label.png"
   echo "$run/$label.block.png"
   log "shot $label: $label.png, $label.block.png"
@@ -252,7 +293,7 @@ cleanup)
 run-dir) echo "$run" ;;
 
 *)
-  sed -n '2,21p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '2,22p' "$0" | sed 's/^# \{0,1\}//'
   exit 2
   ;;
 esac

@@ -4,7 +4,7 @@ The maintained verification list for the herdr-app Now Playing mod. Read this in
 
 ## Baseline preconditions
 
-- macOS; herdr-app window running with layout `main-now-playing` (the person's window — there is no second instance).
+- macOS, or Windows with Git Bash (see the Windows section of SKILL.md); herdr-app window running with layout `main-now-playing` (the person's window — there is no second instance).
 - `$NP install` done for the commit under test, then `$NP doctor` exits 0.
 - A player has a now-playing session: Music or Spotify has played at least one track since login. `$NP sessions` prints at least one line.
 - Record `$NP sessions`, `$NP get before` and `$NP shot before` at the start of every run.

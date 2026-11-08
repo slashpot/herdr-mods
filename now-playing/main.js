@@ -22,8 +22,9 @@ import { View, div, image, svg } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
 import { theme, window, layout, shared, setShared, props, nextCommand, openOverlay, closeOverlay } from "herdr";
 import macos from "./native/macos/backend.js";
+import windows from "./native/windows/backend.js";
 
-const BACKENDS = { macos };
+const BACKENDS = { macos, windows };
 const MOD = "mods/now-playing";
 const POLL_MS = 1500;
 const COMMANDS = new Set(["play", "pause", "toggle", "next", "previous"]);

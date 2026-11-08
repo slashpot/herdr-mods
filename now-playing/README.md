@@ -1,6 +1,6 @@
 # Now Playing
 
-A herdr-app sidebar block that controls what the system is playing, such as Apple Music, Spotify, or YouTube in a browser. It shows artwork, title, artist, album and progress, with previous, play/pause and next buttons. A title or subtitle too long for the block scrolls. When several apps have a session, a list button or `cmd-alt-l` toggles a list of all of them. Clicking a Music, Spotify or Podcasts row shows that session; other rows are read-only. The block shows the session that started playing last, and `cmd-alt-s` cycles through them.
+A herdr-app sidebar block that controls what the system is playing, such as Apple Music, Spotify, or YouTube in a browser, on macOS and Windows. It shows artwork, title, artist, album and progress, with previous, play/pause and next buttons. A title or subtitle too long for the block scrolls. When several apps have a session, a list button or `cmd-alt-l` toggles a list of all of them. Clicking a row shows that session. On macOS only Music, Spotify and Podcasts rows do; other rows are read-only. The block shows the session that started playing last, and `cmd-alt-s` cycles through them.
 
 ## Install
 
@@ -9,6 +9,8 @@ A herdr-app sidebar block that controls what the system is playing, such as Appl
 ```
 
 On macOS this runs `native/macos/build.sh`, which builds `native/macos/bin/libnowplaying.dylib` with clang (arm64 + x86_64, needs the Xcode Command Line Tools). It then copies the mod into herdr-app's mods folder, runs `herdr-app check`, and adds the mod's hotkeys to `keys.json`. herdr-app reloads the mod and the keys by itself.
+
+On Windows, run it from Git Bash with `herdr-app` and Python (`python3` or `python`) on PATH. There is nothing to build: `native/windows/build.sh` only checks that Windows PowerShell 5.1 reaches GSMTC. Without rsync the copy is made with tar. There is no `install.ps1`, because Git Bash comes with Git for Windows.
 
 The mod uses the `main-now-playing` layout. It is a clone of `main` with a 132px `now-playing` block between `agents` and `sidebar-footer`.
 
@@ -26,7 +28,9 @@ The mod uses the `main-now-playing` layout. It is a clone of `main` with a 132px
 
 The keys live in the `global` section of `$HERDR_APP_HOME/keys.json`, default `~/.config/herdr-app/keys.json`. `install.sh` adds only keys you have not bound. It skips a key bound to something else and an action that already has a key, and says so. It writes nothing when there is nothing to add, because any edit makes `keys.json` yours and herdr-app then stops adding its new default shortcuts on upgrade.
 
-The keys work while the herdr-app window has focus. For keys that work from any app, bind a shell command in Raycast or skhd:
+`cmd` is the platform key: Command on macOS, the Windows key on Windows, so `cmd-alt-p` is Win+Alt+P there.
+
+The keys work while the herdr-app window has focus. For keys that work from any app, bind a shell command in Raycast or skhd, or any launcher on Windows:
 
 ```sh
 herdr-app do now-playing.toggle
@@ -55,8 +59,8 @@ Track = { title, artist, album, app, bundle, duration, elapsed, rate, timestamp,
 - The list popup is the same mod opened with `props: { view: "sessions" }`. It polls the backend itself. Only the sidebar copy reads `nextCommand()`, so a key never acts twice.
 - The marquee measures the clip box and the unwrapped text with `on_size_change`, since gpui-kit has no text measuring. Text wider than its box rests 1.5 s at its start, glides to its end at a constant 30 px/s through a native `.transition("left")`, rests again and glides back. A timer only turns it around, once per leg. The first build used `.loop("left")` with ease-in-out: its peak speed was about three times the average and its ends crawled a pixel at a time, which read as stutter.
 - `cmd-alt-l` opens the list as the same popup the list button opens, placed where the list button sits. That spot is computed from the layout's block sizes and the viewport.
-- macOS is the only backend in v1. It lives in `native/macos/` and uses MediaRemote.
-- Linux (MPRIS) and Windows (GSMTC) come later, once there are users on them.
+- macOS uses MediaRemote, in `native/macos/`. Windows uses GSMTC, in `native/windows/`.
+- Linux (MPRIS) comes later, once there are users on it.
 - We build our own helper instead of requiring `brew install media-control`, so the mod has no package dependency.
 - The Spotify Web API was rejected. Since February 2026 its dev-mode rules cap an app at 5 users, and both the owner and the controlling user need Premium.
 
@@ -70,6 +74,20 @@ Track = { title, artist, album, app, bundle, duration, elapsed, rate, timestamp,
 - Music and Spotify skip MediaRemote for commands. `backend.js` sends them `osascript -e 'tell application id "<bundle>" to playpause'` (or `play`, `pause`, `next track`, `previous track`) and marks them controllable, because AppleScript reaches them whichever app is elected. If the script fails, such as when the person denied Automation access, the send falls back to MediaRemote.
 - Verified on macOS 27.2: reading with Apple Music, Spotify and Chrome, targeted control with Apple Music, and AppleScript control of Music and Spotify while another app is elected. Podcasts: picked from the list, dimmed while not elected, and paused and resumed through MediaRemote while elected.
 
+## How the Windows backend works
+
+- `native/windows/nowplaying.ps1` runs in Windows PowerShell 5.1 (`powershell.exe`), which ships with Windows and reaches WinRT. PowerShell 7 cannot. It reads `GlobalSystemMediaTransportControlsSessionManager`.
+- `bundle` is the session's `SourceAppUserModelId` (AUMID), such as `Chrome` or `SpotifyAB.SpotifyMusic_zpdnekdrzrea0!Spotify`. `elected` is the AUMID of `GetCurrentSession()`. A session without a title is left out, and a second session of the same app is dropped, because the mod keys sessions by app.
+- `app` is the Start menu name: `AppInfo.GetFromAppUserModelId` for packaged apps, the `shell:AppsFolder` item for the rest. That lookup is the slowest part of a read, so `backend.js` asks for each AUMID once and passes the known ones back.
+- `elapsed`, `duration` and `timestamp` come from `GetTimelineProperties()`: `Position`, `EndTime - StartTime`, and `LastUpdatedTime` in Unix seconds. `rate` is the playback rate while `PlaybackStatus` is Playing, else 0.
+- Artwork is the thumbnail, written as `<AUMID>-<content hash>.png|jpg` with the same naming and pruning as macOS. Dashes and characters a file name can't hold become `_` in the AUMID part.
+- `send <command> [aumid]` calls `TryPlayAsync`, `TryPauseAsync`, `TryTogglePlayPauseAsync`, `TrySkipNextAsync` or `TrySkipPreviousAsync` on that app's session, or on the current one without an AUMID. It exits 4 when there is no such session. GSMTC takes a command for any session, so every session is `controllable` and `pickable`.
+- `activate` runs `explorer shell:AppsFolder\<AUMID>`.
+- Output is ASCII JSON: every non-ASCII character is a `\u` escape, so the console code page can't mangle titles.
+- A read takes about 400 ms, mostly PowerShell starting, against the 1500 ms poll. herdr-app starts it without a console window.
+- `settleMs` is 800. GSMTC reports a play or pause from Chrome about 35 ms after the command, and from Spotify 700 to 860 ms after.
+- Verified on Windows 11 (26200) with Chrome and Spotify: reading, toggle both ways, next, previous, cycle and the list popup, all through `herdr-app do`.
+
 ## Gotchas
 
 - herdr-app does not render `svg()` icons from a symlinked mod folder. `image()` files under `data/` work either way. That is why `install.sh` copies the mod.
@@ -81,6 +99,9 @@ Track = { title, artist, album, app, bundle, duration, elapsed, rate, timestamp,
 - A live stream reports an infinite duration. JSON cannot carry it, so `get` drops any non-finite number and the block shows no progress bar for that session.
 - Sessions keep MediaRemote's client order, and `cycle` follows it.
 - On macOS, Option changes the character a key types. `herdr-app do` proves each command, but not that `cmd-alt-.` and `cmd-alt-,` match a real press on every keyboard layout.
+- On Windows the hotkeys are Win+Alt combinations, and Windows reserves some of them. Real key presses have not been tried there.
+- On Windows, GSMTC's current session did not follow playback: with Chrome playing, Spotify stayed `elected` while paused. The block still follows whatever started playing last.
+- Spotify on Windows starts playing as soon as it is launched. In a podcast, `previous` returns to the last episode at the position it was left.
 
 ## Verify
 

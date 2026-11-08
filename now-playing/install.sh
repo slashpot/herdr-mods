@@ -18,13 +18,22 @@ home="${HERDR_APP_HOME:-$HOME/.config/herdr-app}"
 dest="$home/mods/now-playing"
 [ -L "$dest" ] && rm "$dest"
 mkdir -p "$dest"
-rsync -a --delete --exclude .git --exclude .gitignore --exclude install.sh ./ "$dest/"
+if command -v rsync >/dev/null 2>&1; then
+  rsync -a --delete --exclude .git --exclude .gitignore --exclude install.sh ./ "$dest/"
+else
+  # Git Bash on Windows has no rsync: empty the copy and unpack a fresh one.
+  find "$dest" -mindepth 1 -delete
+  tar -cf - --exclude .git --exclude .gitignore --exclude install.sh . | tar -xf - -C "$dest"
+fi
 herdr-app check "$dest"
 
 # Adds only keys the person hasn't bound, and writes nothing when there is
 # nothing to add: any edit makes keys.json theirs, which stops herdr-app from
 # upgrading its default shortcuts.
-python3 - keys.json "$home/keys.json" <<'PY'
+# Windows may have only `python`, and a `python3` that is the Microsoft Store stub.
+python=python3
+command -v python3 >/dev/null 2>&1 && python3 -c '' >/dev/null 2>&1 || python=python
+"$python" - keys.json "$home/keys.json" <<'PY'
 import json, os, sys
 ours_path, path = sys.argv[1], sys.argv[2]
 ours = json.load(open(ours_path))

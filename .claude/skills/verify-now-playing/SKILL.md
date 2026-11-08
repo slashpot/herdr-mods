@@ -1,11 +1,11 @@
 ---
 name: verify-now-playing
-description: Verify the herdr-app "Now Playing" mod (now-playing/, a macOS media remote in the herdr-app sidebar) in the person's running Herdr window — install it, doctor the instance, drive play/pause/next/previous through the mod's own MediaRemote backend, and capture window shots of the sidebar block as proof. Use after any change to now-playing/main.js, native/macos/, icons/ or the main-now-playing layout, or when asked to prove the mod works.
+description: Verify the herdr-app "Now Playing" mod (now-playing/, a media remote in the herdr-app sidebar, macOS MediaRemote or Windows GSMTC) in the person's running Herdr window — install it, doctor the instance, drive play/pause/next/previous through the mod's own backend, and capture window shots of the sidebar block as proof. Use after any change to now-playing/main.js, native/macos/, native/windows/, icons/ or the main-now-playing layout, or when asked to prove the mod works.
 ---
 
 # Verify the Now Playing mod
 
-The surface is a block at the bottom of herdr-app's sidebar (layout `main-now-playing`): artwork, a title and `artist — album` that scroll when too long, a progress bar with clocks, three icon buttons (previous, play/pause toggle, next) and, with several sessions, a list button that opens a popup of every session. Global keys in `keys.json` drive the same commands through the mod's `nextCommand()`. Its data comes from macOS MediaRemote through `/usr/bin/perl` loading `native/macos/bin/libnowplaying.dylib` (`native/macos/nowplaying.pl`), wrapped by `native/macos/backend.js`. The only other surface is that backend CLI, which the helper wraps.
+The surface is a block at the bottom of herdr-app's sidebar (layout `main-now-playing`): artwork, a title and `artist — album` that scroll when too long, a progress bar with clocks, three icon buttons (previous, play/pause toggle, next) and, with several sessions, a list button that opens a popup of every session. Global keys in `keys.json` drive the same commands through the mod's `nextCommand()`. On macOS its data comes from MediaRemote through `/usr/bin/perl` loading `native/macos/bin/libnowplaying.dylib` (`native/macos/nowplaying.pl`), wrapped by `native/macos/backend.js`. On Windows it comes from GSMTC through Windows PowerShell 5.1 running `native/windows/nowplaying.ps1`, wrapped by `native/windows/backend.js` (see [Windows](#windows)). The only other surface is that backend CLI, which the helper wraps.
 
 All commands below run from the repo root. The helper is
 `.claude/skills/verify-now-playing/scripts/np-verify` (call it `NP` below):
@@ -83,11 +83,26 @@ Proof standards:
 
 It kills nothing. Never `pkill herdr*`, never quit Music/Spotify. The mod's own `data/now-playing/` is left alone.
 
+## Windows
+
+`np-verify` runs in Git Bash on Windows. It picks the OS from `uname`, and every command above works the same way, with these differences:
+
+- `herdr-app` must be on Git Bash's PATH. An install made after the shell started is not: prepend `$LOCALAPPDATA/Programs/herdr-app`.
+- The backend is `powershell.exe -File native/windows/nowplaying.ps1` from the installed copy, the same call `backend.js` makes. `bundle` is the session's AUMID, such as `Chrome` or `SpotifyAB.SpotifyMusic_zpdnekdrzrea0!Spotify`. GSMTC takes a command for every session, so every line in `$NP sessions` is `ctl` and `$NP send <cmd> <aumid>` reaches that app whether or not it is elected. `send` exits 4 when no session has that AUMID.
+- `install` has nothing to build: `native/windows/build.sh` only checks that Windows PowerShell 5.1 reaches GSMTC. Without rsync, `install.sh` copies with tar.
+- `doctor` checks Windows PowerShell 5.1 instead of macOS and the dylib, and compares the installed copy ignoring CR, because herdr-app rewrites `gpui-kit.d.ts` there with CRLF line ends.
+- `shot` crops with `scripts/crop.ps1` (System.Drawing). The scale includes herdr's zoom from `herdr-app status`.
+- herdr-app ships no `main-now-playing` layout. If `layouts/main-now-playing.json` is missing, make it from `main.json` with a `{"id": "now-playing", "type": "block", "size": {"px": 132}, "content": {"mod": "now-playing"}}` child of `sidebar` just before `sidebar-footer`, and ask before switching to it.
+- `scripts/scripted-control` and `scripts/marquee-motion` are macOS only (AppleScript, zsh, ffmpeg crop offsets). `scripts/list-toggle` runs on both.
+- Spotify starts playing as soon as it is launched. Opening it for a second session changes what the person hears, so ask first and pause it afterward.
+- Verified on Windows 11 (26200) with Chrome and Spotify: get, toggle both ways on each, next, previous, cycle, the list popup and `list-toggle`. Real key presses (`cmd` is the Windows key there) and the artwork click were not driven.
+
 ## Helpers
 
 - `scripts/np-verify`: the commands above (POSIX sh + system python3/osascript; no Homebrew needed).
 - `scripts/marquee-motion`: samples window shots and prints the marquee text's position over time.
 - `scripts/list-toggle`: presses `sessions` through `herdr-app do` and counts open lists after each press.
-- `scripts/crop.js`: JXA PNG crop used by `shot` (`osascript -l JavaScript crop.js <src> <out> <x> <y> <w> <h>`). `sips -c` ignores the offset on macOS 27, so don't use it.
+- `scripts/crop.js`: JXA PNG crop used by `shot` on macOS (`osascript -l JavaScript crop.js <src> <out> <x> <y> <w> <h>`). `sips -c` ignores the offset on macOS 27, so don't use it.
+- `scripts/crop.ps1`: the same crop on Windows, and with only `<src>` it prints the image height.
 
-The crop rectangle comes from the shown layout: sidebar width (a resize click in `layouts/.state/<layout>.json` wins over the file) × the `now-playing` block plus every px block below it, scaled by shot height / `window.json` bounds height.
+The crop rectangle comes from the shown layout: sidebar width (a resize click in `layouts/.state/<layout>.json` wins over the file) × the `now-playing` block plus every px block below it, scaled by herdr's zoom and by shot height / `window.json` bounds height.
