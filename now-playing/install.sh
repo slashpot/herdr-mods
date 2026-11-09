@@ -27,12 +27,42 @@ else
 fi
 herdr-app check "$dest"
 
-# Adds only keys the person hasn't bound, and writes nothing when there is
-# nothing to add: any edit makes keys.json theirs, which stops herdr-app from
-# upgrading its default shortcuts.
 # Windows may have only `python`, and a `python3` that is the Microsoft Store stub.
 python=python3
 command -v python3 >/dev/null 2>&1 && python3 -c '' >/dev/null 2>&1 || python=python
+
+# Makes the main-now-playing layout from herdr's main, once. An existing one is
+# the person's and is left alone.
+layout="$home/layouts/main-now-playing.json"
+if [ ! -e "$layout" ]; then
+  "$python" - "$home/layouts/main.json" "$layout" "$(herdr-app --version)" <<'PY'
+import json, os, sys
+src, out, version = sys.argv[1], sys.argv[2], sys.argv[3].split()[-1]
+if not os.path.exists(src):
+    print(f"layout: {src} does not exist; make main-now-playing by hand (see README)")
+    sys.exit(0)
+root = json.load(open(src))
+def find(n, i):
+    if n.get("id") == i: return n
+    for c in n.get("children", []):
+        f = find(c, i)
+        if f: return f
+sidebar = find(root, "sidebar")
+col = sidebar["children"] if sidebar else []
+at = next((k for k, c in enumerate(col) if c.get("id") == "sidebar-footer"), len(col))
+col.insert(at, {"id": "now-playing", "type": "block", "size": {"px": 132}, "content": {"mod": "now-playing"}})
+root = {"id": root.pop("id"), "cloned_from": {"name": "main", "version": version}, **root}
+with open(out, "w") as f:
+    json.dump(root, f, indent=2)
+    f.write("\n")
+print(f"layout: made {out}")
+PY
+  [ -e "$layout" ] && herdr-app status >/dev/null 2>&1 && herdr-app do layout.switch --name main-now-playing >/dev/null && echo "layout: showing main-now-playing"
+fi
+
+# Adds only keys the person hasn't bound, and writes nothing when there is
+# nothing to add: any edit makes keys.json theirs, which stops herdr-app from
+# upgrading its default shortcuts.
 "$python" - keys.json "$home/keys.json" <<'PY'
 import json, os, sys
 ours_path, path = sys.argv[1], sys.argv[2]

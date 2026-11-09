@@ -3,8 +3,7 @@
 ## now-playing
 
 - [ ] Linux backend via MPRIS, once there are Linux users
-- [ ] Re-verify on macOS. The Windows work touched shared files that only a Mac can prove: `main.js` now imports `native/windows/backend.js` too and picks the backend from `window()` on every read instead of once in `init`, `install.sh` falls back to tar without rsync and to `python` when `python3` doesn't run, and `np-verify` scales the shot crop by herdr's zoom. Run the `verify-now-playing` skill there.
 - [ ] Windows: try the hotkeys with real presses. `cmd` is the Windows key there, and Windows reserves some Win+Alt combinations.
 - [ ] Windows: click the artwork for Chrome. `explorer shell:AppsFolder\Chrome` may open a new window instead of bringing the playing one forward. Spotify's came forward.
-- [ ] `install.sh` doesn't make the `main-now-playing` layout. On a new machine it has to be made by hand (see the Windows section of the verify skill).
-- [ ] `np-verify shot` crops the wrong rectangle while the window is maximized: `window.json` keeps the restored bounds, not the maximized size.
+- [ ] Windows: `np-verify shot` crops the wrong rectangle while the window is maximized, because `window.json` keeps the restored bounds. macOS does not show this: after `window.maximize` there, `window.json` holds the new size. One fix is to take the scale from the window's DPI (`GetDpiForWindow` / 96) in `crop.ps1` instead of from the bounds.
+- [ ] Windows: run `install.sh` once on a home without `layouts/main-now-playing.json`. The step that makes the layout was only run on macOS.

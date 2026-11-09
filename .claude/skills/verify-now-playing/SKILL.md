@@ -30,7 +30,7 @@ The window is already the person's. "Launch" means putting the current source in
 $NP install      # now-playing/install.sh: clang build (arm64+x86_64) + rsync copy into ~/.config/herdr-app/mods/now-playing + herdr-app check + keys.json merge
 ```
 
-herdr-app reloads the mod by itself after the copy. Ready = `$NP doctor` passes. If the layout shown isn't `main-now-playing`, ask before switching: `herdr-app do layout.switch --name main-now-playing`. There is no teardown for the install; it is the deliverable.
+herdr-app reloads the mod by itself after the copy. When `layouts/main-now-playing.json` is missing, `install.sh` makes it from herdr's `main.json` and shows it. Ready = `$NP doctor` passes. If the layout shown isn't `main-now-playing`, ask before switching: `herdr-app do layout.switch --name main-now-playing`. There is no teardown for the install; it is the deliverable.
 
 Needs Xcode Command Line Tools (`clang`). Something must have played in Music, Spotify or a browser since login, or `$NP sessions` prints `nothing playing` (see features/track-display.md).
 
@@ -92,7 +92,6 @@ It kills nothing. Never `pkill herdr*`, never quit Music/Spotify. The mod's own 
 - `install` has nothing to build: `native/windows/build.sh` only checks that Windows PowerShell 5.1 reaches GSMTC. Without rsync, `install.sh` copies with tar.
 - `doctor` checks Windows PowerShell 5.1 instead of macOS and the dylib, and compares the installed copy ignoring CR, because herdr-app rewrites `gpui-kit.d.ts` there with CRLF line ends.
 - `shot` crops with `scripts/crop.ps1` (System.Drawing). The scale includes herdr's zoom from `herdr-app status`.
-- herdr-app ships no `main-now-playing` layout. If `layouts/main-now-playing.json` is missing, make it from `main.json` with a `{"id": "now-playing", "type": "block", "size": {"px": 132}, "content": {"mod": "now-playing"}}` child of `sidebar` just before `sidebar-footer`, and ask before switching to it.
 - `scripts/scripted-control` and `scripts/marquee-motion` are macOS only (AppleScript, zsh, ffmpeg crop offsets). `scripts/list-toggle` runs on both.
 - Spotify starts playing as soon as it is launched. Opening it for a second session changes what the person hears, so ask first and pause it afterward.
 - Verified on Windows 11 (26200) with Chrome and Spotify: get, toggle both ways on each, next, previous, cycle, the list popup and `list-toggle`. Real key presses (`cmd` is the Windows key there) and the artwork click were not driven.

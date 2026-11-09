@@ -12,7 +12,7 @@ On macOS this runs `native/macos/build.sh`, which builds `native/macos/bin/libno
 
 On Windows, run it from Git Bash with `herdr-app` and Python (`python3` or `python`) on PATH. There is nothing to build: `native/windows/build.sh` only checks that Windows PowerShell 5.1 reaches GSMTC. Without rsync the copy is made with tar. There is no `install.ps1`, because Git Bash comes with Git for Windows.
 
-The mod uses the `main-now-playing` layout. It is a clone of `main` with a 132px `now-playing` block between `agents` and `sidebar-footer`.
+The mod uses the `main-now-playing` layout. It is a clone of `main` with a 132px `now-playing` block between `agents` and `sidebar-footer`. When `layouts/main-now-playing.json` is missing, `install.sh` makes it from herdr's `main.json` and, if the window is open, shows it. It never changes an existing one, since that copy may hold your own edits.
 
 ## Hotkeys
 
