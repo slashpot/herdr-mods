@@ -68,6 +68,13 @@ static NSString *artFolder(void) {
     return dir && *dir ? [NSString stringWithUTF8String:dir] : nil;
 }
 
+// A bundle id comes from the playing app's Info.plist, so it may hold a slash.
+static NSString *safeName(NSString *bundle) {
+    NSCharacterSet *bad = [NSCharacterSet characterSetWithCharactersInString:
+        @"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-"].invertedSet;
+    return [[(bundle ?: @"unknown") componentsSeparatedByCharactersInSet:bad] componentsJoinedByString:@"_"];
+}
+
 // A content-derived name makes a new picture a new path, so image() never
 // shows a stale cached file. The bundle prefix lets pruning keep a session's
 // last picture while its next one is still on the way. Returns the file name.
@@ -77,7 +84,7 @@ static NSString *saveArtwork(NSString *bundle, NSData *art, NSString *mime) {
     NSFileManager *fm = NSFileManager.defaultManager;
     [fm createDirectoryAtPath:folder withIntermediateDirectories:YES attributes:nil error:nil];
     NSString *ext = [mime isEqualToString:@"image/png"] ? @"png" : @"jpg";
-    NSString *name = [NSString stringWithFormat:@"%@-%@.%@", bundle ?: @"unknown", sha1Prefix(art), ext];
+    NSString *name = [NSString stringWithFormat:@"%@-%@.%@", safeName(bundle), sha1Prefix(art), ext];
     NSString *path = [folder stringByAppendingPathComponent:name];
     if (![fm fileExistsAtPath:path] && ![art writeToFile:path atomically:YES]) return nil;
     return name;
@@ -91,7 +98,7 @@ static void pruneArtwork(NSArray<NSDictionary *> *sessions) {
     NSMutableSet *keep = [NSMutableSet set], *waiting = [NSMutableSet set];
     for (NSDictionary *s in sessions) {
         if (s[@"art"]) [keep addObject:s[@"art"]];
-        else if (s[@"bundle"]) [waiting addObject:s[@"bundle"]];
+        else if (s[@"bundle"]) [waiting addObject:safeName(s[@"bundle"])];
     }
     NSFileManager *fm = NSFileManager.defaultManager;
     for (NSString *name in [fm contentsOfDirectoryAtPath:folder error:nil]) {

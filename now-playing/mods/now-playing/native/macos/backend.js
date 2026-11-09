@@ -48,6 +48,6 @@ export default {
   },
 
   async activate(track) {
-    if (track?.bundle) await exec("open", ["-b", track.bundle]);
+    if (track?.bundle) await exec("/usr/bin/open", ["-b", track.bundle]);
   },
 };
