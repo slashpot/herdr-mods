@@ -4,7 +4,7 @@ Mods for herdr-app, the GUI app. They are not herdr CLI/TUI plugins. A mod is JS
 
 ## Mods
 
-- `now-playing/` is a universal media remote in the sidebar. It shows title, artist and artwork, and has play/pause/next/previous. It is not tied to any one player. Read `now-playing/README.md` before changing it.
+- `now-playing/` is a universal media remote in the sidebar. It shows title, artist and artwork, and has play/pause/next/previous. It is not tied to any one player. Read `now-playing/README.md` before changing it. `now-playing/` is laid out as a herdr.dev gallery entry: the mod's files are in `now-playing/mods/now-playing/`, and `install.sh`, `keys.json` and the gallery files sit at the entry root.
 
 ## Working here
 

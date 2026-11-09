@@ -33,7 +33,8 @@ esac
 
 here=$(cd "$(dirname "$0")" && pwd)
 repo=$(cd "$here/../../../.." && pwd)
-src="$repo/now-playing"
+entry="$repo/now-playing"
+src="$entry/mods/now-playing"
 home="${HERDR_APP_HOME:-$HOME/.config/herdr-app}"
 mod="$home/mods/now-playing"
 root="$repo/.verify/now-playing"
@@ -80,7 +81,7 @@ else:
 
 # Prints each binding in now-playing/keys.json that $home/keys.json lacks; empty = all present.
 missing_keys() {
-  "$PY" - "$src/keys.json" "$home/keys.json" <<'EOF3'
+  "$PY" - "$entry/keys.json" "$home/keys.json" <<'EOF3'
 import json, sys
 ours = json.load(open(sys.argv[1]))
 try: theirs = json.load(open(sys.argv[2]))
@@ -151,7 +152,7 @@ EOF2
 
 case "${1:-}" in
 install)
-  "$src/install.sh"
+  "$entry/install.sh"
   log "install: ran now-playing/install.sh"
   ;;
 
@@ -182,7 +183,7 @@ doctor)
   [ -d "$mod" ] && [ ! -L "$mod" ] && ok "installed as a copy at $mod" || bad "mod missing or a symlink at $mod (run: np-verify install)"
   # herdr-app on Windows rewrites gpui-kit.d.ts with CRLF line ends.
   crlf=""; [ "$os" = windows ] && crlf=--strip-trailing-cr
-  d=$(diff -rq $crlf -x bin -x install.sh -x .gitignore -x .git "$src" "$mod" 2>&1 || true)
+  d=$(diff -rq $crlf -x bin -x .gitignore -x .DS_Store "$src" "$mod" 2>&1 || true)
   [ -z "$d" ] && ok "installed copy matches the repo" || bad "installed copy differs from the repo (run: np-verify install): $d"
   if [ "$os" = windows ]; then
     :  # nothing to build: nowplaying.ps1 runs as copied

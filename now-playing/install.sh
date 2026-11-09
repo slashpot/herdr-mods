@@ -9,8 +9,8 @@ case "$(uname -s)" in
   Linux) platform=linux ;;
   *) platform=windows ;;
 esac
-if [ -x "native/$platform/build.sh" ]; then
-  "native/$platform/build.sh"
+if [ -x "mods/now-playing/native/$platform/build.sh" ]; then
+  "mods/now-playing/native/$platform/build.sh"
 else
   echo "no backend for $platform yet; installing anyway, the block will say so"
 fi
@@ -19,11 +19,11 @@ dest="$home/mods/now-playing"
 [ -L "$dest" ] && rm "$dest"
 mkdir -p "$dest"
 if command -v rsync >/dev/null 2>&1; then
-  rsync -a --delete --exclude .git --exclude .gitignore --exclude install.sh ./ "$dest/"
+  rsync -a --delete --delete-excluded --exclude .gitignore --exclude .DS_Store mods/now-playing/ "$dest/"
 else
   # Git Bash on Windows has no rsync: empty the copy and unpack a fresh one.
   find "$dest" -mindepth 1 -delete
-  tar -cf - --exclude .git --exclude .gitignore --exclude install.sh . | tar -xf - -C "$dest"
+  tar -cf - -C mods/now-playing --exclude .gitignore --exclude .DS_Store . | tar -xf - -C "$dest"
 fi
 herdr-app check "$dest"
 

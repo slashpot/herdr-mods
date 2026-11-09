@@ -1,10 +1,10 @@
 # Install and reload
 
-`now-playing/install.sh` builds the MediaRemote helper, copies the mod into herdr-app's mods folder (`$HERDR_APP_HOME/mods`, default `~/.config/herdr-app/mods`) and merges its hotkeys into `keys.json` (see hotkeys.md); the running window reloads it by itself, with svg icons intact. A broken edit keeps the last good version running and reports an error in `herdr-app status`.
+`now-playing/install.sh` builds the MediaRemote helper, copies the mod folder `now-playing/mods/now-playing/` into herdr-app's mods folder (`$HERDR_APP_HOME/mods`, default `~/.config/herdr-app/mods`) and merges its hotkeys into `keys.json` (see hotkeys.md); the running window reloads it by itself, with svg icons intact. A broken edit keeps the last good version running and reports an error in `herdr-app status`.
 
 ## Sub-features
 
-- `install-build` `native/macos/build.sh` produces a universal (arm64 + x86_64) `native/macos/bin/libnowplaying.dylib`.
+- `install-build` `mods/now-playing/native/macos/build.sh` produces a universal (arm64 + x86_64) `native/macos/bin/libnowplaying.dylib`.
 - `install-copy` the mod lands as a real folder (not a symlink) and `herdr-app check` passes.
 - `install-reload` the window picks up a change without restart.
 - `install-icons` play, pause, skip and note icons render (they don't through a symlinked folder).

@@ -8,9 +8,9 @@ A herdr-app sidebar block that controls what the system is playing, such as Appl
 ./install.sh
 ```
 
-On macOS this runs `native/macos/build.sh`, which builds `native/macos/bin/libnowplaying.dylib` with clang (arm64 + x86_64, needs the Xcode Command Line Tools). It then copies the mod into herdr-app's mods folder, runs `herdr-app check`, and adds the mod's hotkeys to `keys.json`. herdr-app reloads the mod and the keys by itself.
+On macOS this runs `mods/now-playing/native/macos/build.sh`, which builds `mods/now-playing/native/macos/bin/libnowplaying.dylib` with clang (arm64 + x86_64, needs the Xcode Command Line Tools). It then copies `mods/now-playing/` into herdr-app's mods folder, runs `herdr-app check`, and adds the mod's hotkeys to `keys.json`. herdr-app reloads the mod and the keys by itself.
 
-On Windows, run it from Git Bash with `herdr-app` and Python (`python3` or `python`) on PATH. There is nothing to build: `native/windows/build.sh` only checks that Windows PowerShell 5.1 reaches GSMTC. Without rsync the copy is made with tar. There is no `install.ps1`, because Git Bash comes with Git for Windows.
+On Windows, run it from Git Bash with `herdr-app` and Python (`python3` or `python`) on PATH. There is nothing to build: `mods/now-playing/native/windows/build.sh` only checks that Windows PowerShell 5.1 reaches GSMTC. Without rsync the copy is made with tar. There is no `install.ps1`, because Git Bash comes with Git for Windows.
 
 The mod uses the `main-now-playing` layout. It is a clone of `main` with a 132px `now-playing` block between `agents` and `sidebar-footer`. When `layouts/main-now-playing.json` is missing, `install.sh` makes it from herdr's `main.json` and, if the window is open, shows it. It never changes an existing one, since that copy may hold your own edits.
 
@@ -37,6 +37,8 @@ herdr-app do now-playing.toggle
 ```
 
 ## Design
+
+The mod itself is `mods/now-playing/`, which `install.sh` copies to `$HERDR_APP_HOME/mods/now-playing`. Paths below are relative to it. `install.sh` and `keys.json` sit beside `mods/`, so the installed copy has neither.
 
 The UI knows one data shape. Each OS gets its own backend in `native/<platform>/`, and everything that knows the OS lives in that folder: the `backend.js` that `main.js` imports, its native helper, and the `build.sh` that `install.sh` runs. `main.js` picks the backend by `window().platform`. A backend exports:
 

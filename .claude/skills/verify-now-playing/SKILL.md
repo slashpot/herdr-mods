@@ -1,11 +1,11 @@
 ---
 name: verify-now-playing
-description: Verify the herdr-app "Now Playing" mod (now-playing/, a media remote in the herdr-app sidebar, macOS MediaRemote or Windows GSMTC) in the person's running Herdr window — install it, doctor the instance, drive play/pause/next/previous through the mod's own backend, and capture window shots of the sidebar block as proof. Use after any change to now-playing/main.js, native/macos/, native/windows/, icons/ or the main-now-playing layout, or when asked to prove the mod works.
+description: Verify the herdr-app "Now Playing" mod (now-playing/, a media remote in the herdr-app sidebar, macOS MediaRemote or Windows GSMTC) in the person's running Herdr window — install it, doctor the instance, drive play/pause/next/previous through the mod's own backend, and capture window shots of the sidebar block as proof. Use after any change to now-playing/mods/now-playing/ (main.js, native/macos/, native/windows/, icons/), now-playing/install.sh, now-playing/keys.json or the main-now-playing layout, or when asked to prove the mod works.
 ---
 
 # Verify the Now Playing mod
 
-The surface is a block at the bottom of herdr-app's sidebar (layout `main-now-playing`): artwork, a title and `artist — album` that scroll when too long, a progress bar with clocks, three icon buttons (previous, play/pause toggle, next) and, with several sessions, a list button that opens a popup of every session. Global keys in `keys.json` drive the same commands through the mod's `nextCommand()`. On macOS its data comes from MediaRemote through `/usr/bin/perl` loading `native/macos/bin/libnowplaying.dylib` (`native/macos/nowplaying.pl`), wrapped by `native/macos/backend.js`. On Windows it comes from GSMTC through Windows PowerShell 5.1 running `native/windows/nowplaying.ps1`, wrapped by `native/windows/backend.js` (see [Windows](#windows)). The only other surface is that backend CLI, which the helper wraps.
+The surface is a block at the bottom of herdr-app's sidebar (layout `main-now-playing`): artwork, a title and `artist — album` that scroll when too long, a progress bar with clocks, three icon buttons (previous, play/pause toggle, next) and, with several sessions, a list button that opens a popup of every session. Global keys in `keys.json` drive the same commands through the mod's `nextCommand()`. On macOS its data comes from MediaRemote through `/usr/bin/perl` loading `native/macos/bin/libnowplaying.dylib` (`native/macos/nowplaying.pl`), wrapped by `native/macos/backend.js`. Those paths, and the Windows ones, are under the mod folder `now-playing/mods/now-playing/`; `install.sh` and `keys.json` sit one level up, in `now-playing/`. On Windows it comes from GSMTC through Windows PowerShell 5.1 running `native/windows/nowplaying.ps1`, wrapped by `native/windows/backend.js` (see [Windows](#windows)). The only other surface is that backend CLI, which the helper wraps.
 
 All commands below run from the repo root. The helper is
 `.claude/skills/verify-now-playing/scripts/np-verify` (call it `NP` below):
@@ -27,7 +27,7 @@ $NP              # prints the usage block
 The window is already the person's. "Launch" means putting the current source into it:
 
 ```sh
-$NP install      # now-playing/install.sh: clang build (arm64+x86_64) + rsync copy into ~/.config/herdr-app/mods/now-playing + herdr-app check + keys.json merge
+$NP install      # now-playing/install.sh: clang build (arm64+x86_64) + rsync copy of now-playing/mods/now-playing/ into ~/.config/herdr-app/mods/now-playing + herdr-app check + keys.json merge
 ```
 
 herdr-app reloads the mod by itself after the copy. When `layouts/main-now-playing.json` is missing, `install.sh` makes it from herdr's `main.json` and shows it. Ready = `$NP doctor` passes. If the layout shown isn't `main-now-playing`, ask before switching: `herdr-app do layout.switch --name main-now-playing`. There is no teardown for the install; it is the deliverable.
@@ -40,7 +40,7 @@ Needs Xcode Command Line Tools (`clang`). Something must have played in Music, S
 $NP doctor       # read-only; exit 0 = worth driving
 ```
 
-It checks macOS, `herdr-app` on PATH, a running window for `$HERDR_APP_HOME` (`herdr-app status`), no status errors, that the shown layout contains a `now-playing` block, that the mod is a copy (not a symlink: svg icons break) matching the repo, that the dylib is newer than `nowplaying.m`, that `herdr-app check` passes, that `keys.json` holds every binding in `now-playing/keys.json`, and that the backend `get` returns JSON, listing each session. Each FAIL line names its fix. Run it first, and again whenever anything looks off.
+It checks macOS, `herdr-app` on PATH, a running window for `$HERDR_APP_HOME` (`herdr-app status`), no status errors, that the shown layout contains a `now-playing` block, that the mod is a copy (not a symlink: svg icons break) matching `now-playing/mods/now-playing/`, that the dylib is newer than `nowplaying.m`, that `herdr-app check` passes, that `keys.json` holds every binding in `now-playing/keys.json`, and that the backend `get` returns JSON, listing each session. Each FAIL line names its fix. Run it first, and again whenever anything looks off.
 
 ## Drive
 
