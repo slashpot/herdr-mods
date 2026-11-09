@@ -50,7 +50,8 @@ A music remote at the bottom of the sidebar for whatever your computer is playin
 
 ## Watch out
 
-- On macOS, build the helper before the first load: run `mods/music-remote/native/macos/build.sh`. It needs the Xcode Command Line Tools. `bin/` is not in the repo.
+- To add this mod, clone the repo and run `./install.sh` from this folder (Git Bash on Windows) instead of copying by hand. It does the add steps for you, plus the two this mod needs on top: it builds the macOS helper, and it makes the `main-music-remote` layout and switches to it. It replaces an earlier copy of `mods/music-remote`. If that folder holds a different mod, rename this one first. It adds only keys the person has not bound, says which ones it skipped, and leaves an existing `main-music-remote` layout alone.
+- On macOS, the helper must be built before the first load, with `mods/music-remote/native/macos/build.sh`. It needs the Xcode Command Line Tools. `bin/` is not in the repo.
 - The mod runs programs. On macOS it runs `/usr/bin/perl`, `osascript` and `open`. On Windows it runs `powershell.exe` and `explorer.exe`. It makes no network requests.
 - Copy the mod folder, never symlink it. herdr-app does not render `svg()` icons from a symlinked mod.
 - The mod adds no block by itself. Add the block above to the person's layout. `install.sh` clones `main` into `layouts/main-music-remote.json` with the block in place, and leaves an existing file alone.
