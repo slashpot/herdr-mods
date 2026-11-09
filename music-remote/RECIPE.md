@@ -1,6 +1,6 @@
 # Music Remote
 
-A music remote at the bottom of the sidebar for whatever your computer is playing: Apple Music, Spotify, Podcasts, or YouTube in a browser, on macOS and Windows. It shows the artwork, title, artist and album, a progress bar, and previous, play/pause and next buttons. When several apps are playing or paused, a list button picks which one the block controls.
+A music remote at the bottom of the sidebar for whatever your computer is playing: Apple Music, Spotify, Podcasts, or YouTube in a browser, on macOS and Windows. It shows the artwork, title, artist and album, a progress bar, and previous, play/pause and next buttons. When several apps are playing or paused, a list button picks which one the block controls. Linux is not supported yet.
 
 ![Music Remote](preview.png)
 

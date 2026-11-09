@@ -8,7 +8,9 @@ A music remote at the bottom of the Herdr sidebar. It shows what your computer i
 
 ![Music Remote](music-remote/preview.png)
 
-Version 0.9.0. Runs on macOS 15.4 or later and on Windows 11. Linux is not supported yet.
+Version 0.9.0. Runs on macOS 15.4 or later and on Windows 11.
+
+**Linux is not supported yet.** On Linux the block shows only a note that it has no backend, with no controls.
 
 ### Install
 
