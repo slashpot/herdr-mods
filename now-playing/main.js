@@ -25,6 +25,8 @@ import macos from "./native/macos/backend.js";
 import windows from "./native/windows/backend.js";
 
 const BACKENDS = { macos, windows };
+// window() is live and has no platform yet while a cold-started window loads its mods.
+const backendFor = (platform) => BACKENDS[platform] ?? null;
 const MOD = "mods/now-playing";
 const POLL_MS = 1500;
 const COMMANDS = new Set(["play", "pause", "toggle", "next", "previous"]);
@@ -72,9 +74,6 @@ export default class NowPlaying extends View {
     this.error = null;
     this.loading = true;
     this.settled = 0; // reads that start before this time are dropped
-    this.platform = window()?.platform;
-    this.backend = BACKENDS[this.platform] ?? null;
-    if (!this.backend) return;
     this.refresh(cx);
     cx.timer.every(POLL_MS, (cx) => this.refresh(cx));
     if (this.listing) return;
@@ -96,12 +95,13 @@ export default class NowPlaying extends View {
   }
 
   refresh(cx) {
-    if (this.busy) return;
+    const backend = backendFor(window()?.platform);
+    if (this.busy || !backend) return;
     this.busy = true;
     cx.spawn(async (cx) => {
       try {
         const asked = Date.now();
-        const { elected, sessions } = await this.backend.get();
+        const { elected, sessions } = await backend.get();
         if (asked < this.settled) return;
         const last = new Map(this.sessions.map((s) => [s.bundle, s]));
         // Artwork lands a second or two after a track change: keep the last
@@ -175,8 +175,9 @@ export default class NowPlaying extends View {
   }
 
   command(name, cx) {
+    const backend = backendFor(window()?.platform);
     const target = this.current();
-    if (target?.controllable === false) return;
+    if (!backend || target?.controllable === false) return;
     // Toggle does what the button shows. A blind toggle on a block that hasn't
     // seen a pause made in the player yet would start playback instead.
     if (target && name === "toggle") name = target.rate ? "pause" : "play";
@@ -191,10 +192,10 @@ export default class NowPlaying extends View {
     }
     cx.spawn(async (cx) => {
       try {
-        await this.backend.send(name, target?.bundle);
+        await backend.send(name, target?.bundle);
       } finally {
-        this.settled = Date.now() + this.backend.settleMs;
-        cx.timer.after(this.backend.settleMs, (cx) => this.refresh(cx));
+        this.settled = Date.now() + backend.settleMs;
+        cx.timer.after(backend.settleMs, (cx) => this.refresh(cx));
       }
     });
   }
@@ -277,7 +278,7 @@ export default class NowPlaying extends View {
     const track = this.current();
     return div().id("art").flex_none()
       .when(Boolean(track?.bundle), (el) => el.cursor_pointer()
-        .on_click((_e, cx) => cx.spawn(async () => { await this.backend.activate(track); })))
+        .on_click((_e, cx) => cx.spawn(async () => { await backendFor(window()?.platform)?.activate(track); })))
       .child(this.cover(track, size));
   }
 
@@ -318,7 +319,8 @@ export default class NowPlaying extends View {
     const t = theme();
     if (this.listing) return this.renderSessions();
     this.viewport = globalThis.window.viewport_size();
-    if (!this.backend) return this.message(`Now Playing has no backend for ${this.platform ?? "this platform"} yet`);
+    const platform = window()?.platform;
+    if (platform && !backendFor(platform)) return this.message(`Now Playing has no backend for ${platform} yet`);
     if (this.error) return this.message(`Now Playing: ${this.error}`);
     const track = this.current();
     if (!track) return this.message(this.loading ? "" : "Nothing playing");
