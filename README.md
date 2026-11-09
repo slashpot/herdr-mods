@@ -2,11 +2,11 @@
 
 Mods for [Herdr](https://herdr.dev), the desktop app. Each folder is one entry for the [herdr.dev mods gallery](https://herdr.dev/gallery/?type=mods).
 
-## Now Playing
+## Music Remote
 
-A media remote at the bottom of the Herdr sidebar. It shows what your computer is playing, in Apple Music, Spotify, Podcasts or a browser tab, with artwork, title, artist, progress, and previous, play/pause and next buttons. It is not tied to one player. When several apps have a session, a list picks which one the block controls.
+A music remote at the bottom of the Herdr sidebar. It shows what your computer is playing, in Apple Music, Spotify, Podcasts or a browser tab, with artwork, title, artist, progress, and previous, play/pause and next buttons. It is not tied to one player. When several apps have a session, a list picks which one the block controls.
 
-![Now Playing](now-playing/preview.png)
+![Music Remote](music-remote/preview.png)
 
 Version 0.9.0. Runs on macOS 15.4 or later and on Windows 11. Linux is not supported yet.
 
@@ -17,15 +17,15 @@ Ask your agent to add the mod from the gallery, or install it from a clone:
 ```sh
 git clone https://github.com/slashpot/herdr-mods.git
 cd herdr-mods
-./now-playing/install.sh
+./music-remote/install.sh
 ```
 
 On macOS, `install.sh` builds a small native helper with clang, so it needs the Xcode Command Line Tools (`xcode-select --install`). On Windows, run it from Git Bash with `herdr-app` and Python on `PATH`. Nothing is built there.
 
 The script then does these steps:
 
-1. It copies the mod to `~/.config/herdr-app/mods/now-playing`, or to `$HERDR_APP_HOME/mods/now-playing` when that is set.
-2. It makes a `main-now-playing` layout, which is herdr's `main` with the block in the sidebar, and switches the window to it. It never changes a layout file that already exists.
+1. It copies the mod to `~/.config/herdr-app/mods/music-remote`, or to `$HERDR_APP_HOME/mods/music-remote` when that is set.
+2. It makes a `main-music-remote` layout, which is herdr's `main` with the block in the sidebar, and switches the window to it. It never changes a layout file that already exists.
 3. It adds the hotkeys below to `keys.json`. It skips a key you already use.
 
 herdr-app reloads the mod and the keys by itself.
@@ -40,7 +40,7 @@ herdr-app reloads the mod and the keys by itself.
 | `cmd-alt-s` | show the next session |
 | `cmd-alt-l` | open the session list |
 
-`cmd` is Command on macOS and the Windows key on Windows. The keys work while the Herdr window has focus. For keys that work from any app, bind `herdr-app do now-playing.toggle` (or `next`, `previous`) in a launcher such as Raycast.
+`cmd` is Command on macOS and the Windows key on Windows. The keys work while the Herdr window has focus. For keys that work from any app, bind `herdr-app do music-remote.toggle` (or `next`, `previous`) in a launcher such as Raycast.
 
 Click the cover to bring the player to the front.
 
@@ -58,11 +58,11 @@ Click the cover to bring the player to the front.
 
 ### Uninstall
 
-1. Delete `~/.config/herdr-app/mods/now-playing`.
-2. Delete `~/.config/herdr-app/layouts/main-now-playing.json`.
-3. Remove the `now-playing.*` lines from the `global` section of `keys.json`.
+1. Delete `~/.config/herdr-app/mods/music-remote`.
+2. Delete `~/.config/herdr-app/layouts/main-music-remote.json`.
+3. Remove the `music-remote.*` lines from the `global` section of `keys.json`.
 
-The design and the per-OS details are in [now-playing/README.md](now-playing/README.md).
+The design and the per-OS details are in [music-remote/README.md](music-remote/README.md).
 
 ## Credits
 

@@ -1,0 +1,32 @@
+# Install and reload
+
+`music-remote/install.sh` builds the MediaRemote helper, copies the mod folder `music-remote/mods/music-remote/` into herdr-app's mods folder (`$HERDR_APP_HOME/mods`, default `~/.config/herdr-app/mods`) and merges its hotkeys into `keys.json` (see hotkeys.md); the running window reloads it by itself, with svg icons intact. A broken edit keeps the last good version running and reports an error in `herdr-app status`.
+
+## Sub-features
+
+- `install-build` `mods/music-remote/native/macos/build.sh` produces a universal (arm64 + x86_64) `native/macos/bin/libnowplaying.dylib`.
+- `install-copy` the mod lands as a real folder (not a symlink) and `herdr-app check` passes.
+- `install-reload` the window picks up a change without restart.
+- `install-icons` play, pause, skip and note icons render (they don't through a symlinked folder).
+
+## How to get to it (user POV)
+
+- Run `music-remote/install.sh` from the repo (or `$MR install`).
+
+## Driving it with mr-verify
+
+Preconditions:
+
+- Xcode Command Line Tools installed (`xcode-select -p` succeeds).
+
+- **Install.** Run `$MR install`. Prints `built native/macos/bin/libnowplaying.dylib`, then `check passed: <mod dir>`, then the `keys:` lines; exit 0.
+- **Universal binary.** Run `lipo -archs ~/.config/herdr-app/mods/music-remote/native/macos/bin/libnowplaying.dylib`. Prints `x86_64 arm64`.
+- **Healthy.** Run `$MR doctor`. Exit 0, `installed copy matches the repo`, `status errors: none`.
+- **Reload.** Make a visible, harmless edit only if the task is a change under test (for example the one being verified), install, wait 2 s, `$MR shot reloaded`. The block shows the change with no restart.
+- **Icons.** In the latest `.block.png`, the three control icons are drawn (not blank squares).
+
+## Gotchas
+
+- Never symlink the mod folder into `mods/`: svg icons silently stop rendering.
+- A passing `herdr-app check` does not lay out the mod or run async states; the window shot is still required.
+- A broken install leaves the old version on screen. Check `herdr-app status` errors, don't trust the picture alone.

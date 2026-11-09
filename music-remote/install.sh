@@ -1,0 +1,97 @@
+#!/bin/sh
+# Builds this OS's backend helper, copies the mod into herdr-app's mods folder
+# and adds the mod's hotkeys to keys.json. herdr-app reloads both by itself.
+# A copy, not a symlink: herdr-app doesn't load svg() icons through a symlinked mod folder.
+set -eu
+cd "$(dirname "$0")"
+case "$(uname -s)" in
+  Darwin) platform=macos ;;
+  Linux) platform=linux ;;
+  *) platform=windows ;;
+esac
+if [ -x "mods/music-remote/native/$platform/build.sh" ]; then
+  "mods/music-remote/native/$platform/build.sh"
+else
+  echo "no backend for $platform yet; installing anyway, the block will say so"
+fi
+home="${HERDR_APP_HOME:-$HOME/.config/herdr-app}"
+dest="$home/mods/music-remote"
+[ -L "$dest" ] && rm "$dest"
+mkdir -p "$dest"
+if command -v rsync >/dev/null 2>&1; then
+  rsync -a --delete --delete-excluded --exclude .gitignore --exclude .DS_Store mods/music-remote/ "$dest/"
+else
+  # Git Bash on Windows has no rsync: empty the copy and unpack a fresh one.
+  find "$dest" -mindepth 1 -delete
+  tar -cf - -C mods/music-remote --exclude .gitignore --exclude .DS_Store . | tar -xf - -C "$dest"
+fi
+herdr-app check "$dest"
+
+# Windows may have only `python`, and a `python3` that is the Microsoft Store stub.
+python=python3
+command -v python3 >/dev/null 2>&1 && python3 -c '' >/dev/null 2>&1 || python=python
+
+# Makes the main-music-remote layout from herdr's main, once. An existing one is
+# the person's and is left alone.
+layout="$home/layouts/main-music-remote.json"
+if [ ! -e "$layout" ]; then
+  "$python" - "$home/layouts/main.json" "$layout" "$(herdr-app --version)" <<'PY'
+import json, os, sys
+src, out, version = sys.argv[1], sys.argv[2], sys.argv[3].split()[-1]
+if not os.path.exists(src):
+    print(f"layout: {src} does not exist; make main-music-remote by hand (see README)")
+    sys.exit(0)
+root = json.load(open(src))
+def find(n, i):
+    if n.get("id") == i: return n
+    for c in n.get("children", []):
+        f = find(c, i)
+        if f: return f
+sidebar = find(root, "sidebar")
+col = sidebar["children"] if sidebar else []
+at = next((k for k, c in enumerate(col) if c.get("id") == "sidebar-footer"), len(col))
+col.insert(at, {"id": "music-remote", "type": "block", "size": {"px": 132}, "content": {"mod": "music-remote"}})
+root = {"id": root.pop("id"), "cloned_from": {"name": "main", "version": version}, **root}
+with open(out, "w") as f:
+    json.dump(root, f, indent=2)
+    f.write("\n")
+print(f"layout: made {out}")
+PY
+  [ -e "$layout" ] && herdr-app status >/dev/null 2>&1 && herdr-app do layout.switch --name main-music-remote >/dev/null && echo "layout: showing main-music-remote"
+fi
+
+# Adds only keys the person hasn't bound, and writes nothing when there is
+# nothing to add: any edit makes keys.json theirs, which stops herdr-app from
+# upgrading its default shortcuts.
+"$python" - keys.json "$home/keys.json" <<'PY'
+import json, os, sys
+ours_path, path = sys.argv[1], sys.argv[2]
+ours = json.load(open(ours_path))
+if not os.path.exists(path):
+    print(f"keys: {path} does not exist; add the bindings in {ours_path} by hand")
+    sys.exit(0)
+theirs = json.load(open(path))
+added = []
+for section, binds in ours.items():
+    have = theirs.setdefault(section, {})
+    for key, action in binds.items():
+        if have.get(key) == action:
+            continue
+        if key in have:
+            print(f"keys: skipped {key} -> {action}: {section} already binds it to {json.dumps(have[key])}")
+        elif action in have.values():
+            print(f"keys: skipped {key} -> {action}: {section} already binds {action} to another key")
+        else:
+            have[key] = action
+            added.append(f"{key} -> {action}")
+if not added:
+    print("keys: nothing to add")
+    sys.exit(0)
+tmp = path + ".tmp"
+with open(tmp, "w") as f:
+    json.dump(theirs, f, indent=2)
+    f.write("\n")
+os.replace(tmp, path)
+for line in added:
+    print(f"keys: added {line}")
+PY

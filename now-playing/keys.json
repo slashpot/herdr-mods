@@ -1,9 +1,0 @@
-{
-  "global": {
-    "cmd-alt-p": "now-playing.toggle",
-    "cmd-alt-.": "now-playing.next",
-    "cmd-alt-,": "now-playing.previous",
-    "cmd-alt-s": "now-playing.cycle",
-    "cmd-alt-l": "now-playing.sessions"
-  }
-}

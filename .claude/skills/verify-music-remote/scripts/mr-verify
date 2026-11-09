@@ -1,0 +1,300 @@
+#!/bin/sh
+# mr-verify: drive and observe the herdr-app "Music Remote" mod for verification.
+#
+#   mr-verify install                 build/check the backend helper and copy the mod into herdr-app (music-remote/install.sh)
+#   mr-verify doctor                  read-only: is the running window + installed mod worth driving?
+#   mr-verify get [label]             what the OS reports now (the mod's exact backend call) -> <run>/get-<label>.json
+#   mr-verify sessions                one line per session: bundle, rate, app, title; * marks the elected one
+#   mr-verify send <cmd> [bundle]     play|pause|toggle|next|previous to one session through the helper, or to the elected one
+#                                     (macOS: the mod uses AppleScript for Music/Spotify, drive those with `do`;
+#                                     Windows: GSMTC reaches every session, bundle is the AUMID)
+#   mr-verify wait-rate <0|1> [secs] [bundle]
+#                                     poll get until that session's rate matches (default: elected, 5s); exits 1 on timeout
+#   mr-verify keys                    does keys.json hold every binding the mod ships?
+#   mr-verify shot <label>            window frame -> <run>/<label>.png, Music Remote block -> <run>/<label>.block.png
+#   mr-verify sidebar <px>            resize the sidebar (layout.resize) to test the narrow rail; 268 = default
+#   mr-verify log <text...>           append a line to <run>/transcript.md
+#   mr-verify cleanup                 restore sidebar width, remove scratch artwork; keeps evidence
+#   mr-verify run-dir                 print the evidence folder of the current run
+#   mr-verify do <command>            herdr-app do music-remote.<command>: the path a keys.json binding takes
+#
+# Evidence: $REPO/.verify/music-remote/<RUN_ID>/ (git-ignored). RUN_ID defaults to the
+# first call's timestamp and is remembered in .verify/music-remote/current until cleanup.
+#
+# Runs on macOS (system python3, perl, sips, osascript) and on Windows in Git Bash
+# (python3 or python, Windows PowerShell 5.1).
+set -eu
+
+case "$(uname -s)" in
+  Darwin) os=macos; PY=/usr/bin/python3 ;;
+  Linux) os=linux; PY=python3 ;;
+  *) os=windows; PY=python3; command -v python3 >/dev/null 2>&1 && python3 -c '' >/dev/null 2>&1 || PY=python ;;
+esac
+
+here=$(cd "$(dirname "$0")" && pwd)
+repo=$(cd "$here/../../../.." && pwd)
+entry="$repo/music-remote"
+src="$entry/mods/music-remote"
+home="${HERDR_APP_HOME:-$HOME/.config/herdr-app}"
+mod="$home/mods/music-remote"
+root="$repo/.verify/music-remote"
+mkdir -p "$root"
+
+if [ -n "${RUN_ID:-}" ]; then :;
+elif [ -f "$root/current" ]; then RUN_ID=$(cat "$root/current");
+else RUN_ID=$(date +%Y%m%d-%H%M%S); fi
+echo "$RUN_ID" > "$root/current"
+run="$root/$RUN_ID"
+scratch="$run/.scratch-art"   # artwork the verifier's `get` writes; not the mod's data dir
+mkdir -p "$run"
+
+log() { printf '%s  %s\n' "$(date +%H:%M:%S)" "$*" >> "$run/transcript.md"; }
+# The mod's own helper, called the way its backend.js calls it.
+backend() {
+  if [ "$os" = windows ]; then
+    if [ "${1:-}" = get ]; then dir=$(cygpath -w "$2"); shift 2; set -- get "$dir" "$@"; fi
+    powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$(cygpath -w "$mod/native/windows/nowplaying.ps1")" "$@" | tr -d '
+'
+  else
+    /usr/bin/perl "$mod/native/macos/nowplaying.pl" "$mod/native/macos/bin/libnowplaying.dylib" "$@"
+  fi
+}
+
+# Reads a get JSON on stdin. `sessions` prints one line per session; `rate [bundle]`
+# prints 0/1 for that session (default: elected), or "none" when it isn't there.
+summarize() {
+  "$PY" -c '
+import json, sys
+d = json.load(sys.stdin)
+mode, want = sys.argv[1], (sys.argv[2] if len(sys.argv) > 2 else "")
+if mode == "sessions":
+    if not d["sessions"]: print("nothing playing")
+    for t in d["sessions"]:
+        mark = "*" if t.get("bundle") == d["elected"] else " "
+        print("%s %-24s rate %s  %s  %s: %s" % (mark, t.get("bundle"), t.get("rate"), "ctl" if t.get("controllable") else "---", t.get("app"), t.get("title")))
+else:
+    b = want or d["elected"]
+    t = next((t for t in d["sessions"] if t.get("bundle") == b), None)
+    print("none" if t is None else (1 if t.get("rate") else 0))
+' "$@"
+}
+
+# Prints each binding in music-remote/keys.json that $home/keys.json lacks; empty = all present.
+missing_keys() {
+  "$PY" - "$entry/keys.json" "$home/keys.json" <<'EOF3'
+import json, sys
+ours = json.load(open(sys.argv[1]))
+try: theirs = json.load(open(sys.argv[2]))
+except FileNotFoundError: theirs = {}
+for section, binds in ours.items():
+    for key, action in binds.items():
+        got = theirs.get(section, {}).get(key)
+        if got != action:
+            print("%s %s -> %s (has %s)" % (section, key, action, json.dumps(got)))
+EOF3
+}
+
+# What `send` hands the helper: an MRCommand id on macOS, the command's name on Windows.
+cmd_id() {
+  case "$1" in play) i=0;; pause) i=1;; toggle) i=2;; next) i=4;; previous) i=5;;
+    *) echo "unknown command: $1 (play|pause|toggle|next|previous)" >&2; exit 2;; esac
+  if [ "$os" = windows ]; then echo "$1"; else echo "$i"; fi
+}
+
+# Prints "x y w h" in shot pixels for the music-remote block: bottom-left of the window,
+# sidebar width wide, from the top of the music-remote block to the window bottom (footer included).
+# Layout px are scaled by herdr's zoom (status "zoom") and then by the display (shot / window.json bounds).
+block_rect() {
+  "$PY" - "$home" "$1" <<'EOF'
+import json, sys, subprocess
+home, shot_h = sys.argv[1], int(sys.argv[2])
+status = json.loads(subprocess.check_output(["herdr-app", "status"]))
+layout = json.load(open(f"{home}/layouts/{status['layout']}.json"))
+win = json.load(open(f"{home}/window.json"))
+def find(n, i):
+    if n.get("id") == i: return n
+    for c in n.get("children", []):
+        f = find(c, i)
+        if f: return f
+sidebar = find(layout, "sidebar")
+col = sidebar["children"]
+i = next(k for k, c in enumerate(col) if c.get("content", {}).get("mod") == "music-remote")
+below = sum(c["size"]["px"] for c in col[i:] if "px" in c.get("size", {}))
+scale = shot_h / win["bounds"][3] * status.get("zoom", 1)  # bounds are [x, y, w, h] in logical px
+# live sidebar width may differ from the file after a resize: ask the layout state if present
+w = sidebar["size"].get("px", 268)
+try:
+    st = json.load(open(f"{home}/layouts/.state/{status['layout']}.json"))
+    w = st["nodes"]["sidebar"]["size"]["px"]
+except Exception:
+    pass
+print(0, round(shot_h - below * scale), round(w * scale), round(below * scale))
+EOF
+}
+
+# Current sidebar width in logical px (a resize click wins over the layout file).
+sidebar_px() {
+  "$PY" - "$home" <<'EOF2'
+import json, sys, subprocess
+home = sys.argv[1]
+name = json.loads(subprocess.check_output(["herdr-app", "status"]))["layout"]
+def find(n, i):
+    if n.get("id") == i: return n
+    for c in n.get("children", []):
+        f = find(c, i)
+        if f: return f
+try:
+    print(int(json.load(open(f"{home}/layouts/.state/{name}.json"))["nodes"]["sidebar"]["size"]["px"]))
+except Exception:
+    print(int(find(json.load(open(f"{home}/layouts/{name}.json")), "sidebar")["size"]["px"]))
+EOF2
+}
+
+case "${1:-}" in
+install)
+  "$entry/install.sh"
+  log "install: ran music-remote/install.sh"
+  ;;
+
+doctor)
+  fail=0
+  ok()  { echo "ok    $*"; }
+  bad() { echo "FAIL  $*"; fail=1; }
+  case "$os" in
+  macos) ok "macOS $(sw_vers -productVersion)" ;;
+  windows)
+    v=$(powershell.exe -NoProfile -NonInteractive -Command '$PSVersionTable.PSVersion.ToString()' 2>&1 | tr -d '
+') || v=""
+    case "$v" in 5.1*) ok "Windows, Windows PowerShell $v" ;; *) bad "Windows PowerShell 5.1 (powershell.exe) not found: $v" ;; esac ;;
+  *) bad "$os: no backend for this OS" ;;
+  esac
+  command -v herdr-app >/dev/null && ok "herdr-app $(herdr-app --version | awk '{print $2}')" || bad "herdr-app not on PATH"
+  if status=$(herdr-app status 2>&1); then
+    layout=$(printf '%s' "$status" | "$PY" -c 'import json,sys; print(json.load(sys.stdin)["layout"])')
+    errors=$(printf '%s' "$status" | "$PY" -c 'import json,sys; print(json.dumps(json.load(sys.stdin)["errors"]))')
+    ok "window running (home $home), layout $layout"
+    [ "$errors" = "[]" ] && ok "status errors: none" || bad "status errors: $errors"
+    grep -q '"mod": *"music-remote"' "$home/layouts/$layout.json" \
+      && ok "layout $layout shows the music-remote block" \
+      || bad "layout $layout has no music-remote block (try: herdr-app do layout.switch --name main-music-remote)"
+  else
+    bad "no running window for $home: $status"
+  fi
+  [ -d "$mod" ] && [ ! -L "$mod" ] && ok "installed as a copy at $mod" || bad "mod missing or a symlink at $mod (run: mr-verify install)"
+  # herdr-app on Windows rewrites gpui-kit.d.ts with CRLF line ends.
+  crlf=""; [ "$os" = windows ] && crlf=--strip-trailing-cr
+  d=$(diff -rq $crlf -x bin -x .gitignore -x .DS_Store "$src" "$mod" 2>&1 || true)
+  [ -z "$d" ] && ok "installed copy matches the repo" || bad "installed copy differs from the repo (run: mr-verify install): $d"
+  if [ "$os" = windows ]; then
+    :  # nothing to build: nowplaying.ps1 runs as copied
+  elif [ -f "$mod/native/macos/bin/libnowplaying.dylib" ] && [ ! "$src/native/macos/nowplaying.m" -nt "$mod/native/macos/bin/libnowplaying.dylib" ]; then
+    ok "dylib built and newer than nowplaying.m"
+  else
+    bad "dylib missing or older than nowplaying.m (run: mr-verify install)"
+  fi
+  c=$(herdr-app check "$mod" 2>&1) && ok "herdr-app check passes" || bad "herdr-app check: $c"
+  m=$(missing_keys 2>&1) && [ -z "$m" ] && ok "keys.json has every music-remote binding" || bad "keys.json lacks bindings (run: mr-verify install): $m"
+  if g=$(backend get "$scratch" 2>&1) && printf '%s' "$g" | summarize sessions >/dev/null; then
+    ok "backend get:"
+    printf '%s' "$g" | summarize sessions | sed 's/^/        /'
+  else
+    bad "backend get failed: $g"
+  fi
+  echo "run dir: $run"
+  log "doctor: $( [ $fail = 0 ] && echo pass || echo FAIL )"
+  exit $fail
+  ;;
+
+get)
+  label="${2:-$(date +%H%M%S)}"
+  backend get "$scratch" | tee "$run/get-$label.json"
+  log "get $label: $(cat "$run/get-$label.json")"
+  ;;
+
+sessions)
+  out=$(backend get "$scratch" | summarize sessions)
+  echo "$out"
+  log "sessions: $(echo "$out" | tr '\n' ';')"
+  ;;
+
+send)
+  [ -n "${2:-}" ] || { echo "usage: mr-verify send play|pause|toggle|next|previous [bundle]" >&2; exit 2; }
+  out=$(backend send "$(cmd_id "$2")" ${3:+"$3"})
+  echo "$out"
+  log "send $2 ${3:-(elected)}: $out"
+  [ "$out" = true ] || [ "$out" = 1 ]
+  ;;
+
+wait-rate)
+  want="${2:?usage: mr-verify wait-rate 0|1 [secs] [bundle]}"; secs="${3:-5}"; bundle="${4:-}"; i=0
+  while [ "$i" -lt $((secs * 2)) ]; do
+    r=$(backend get "$scratch" | summarize rate "$bundle")
+    if [ "$r" = "$want" ]; then log "wait-rate $want ${bundle:-(elected)}: reached"; echo "rate $want"; exit 0; fi
+    i=$((i + 1)); /bin/sleep 0.5
+  done
+  log "wait-rate $want ${bundle:-(elected)}: TIMEOUT after ${secs}s"; echo "timeout waiting for rate $want" >&2; exit 1
+  ;;
+
+keys)
+  m=$(missing_keys)
+  if [ -z "$m" ]; then echo "all bindings present in $home/keys.json"; else echo "$m"; exit 1; fi
+  ;;
+
+do)
+  [ -n "${2:-}" ] || { echo "usage: mr-verify do toggle|play|pause|next|previous|cycle|sessions" >&2; exit 2; }
+  out=$(herdr-app do "music-remote.$2" 2>&1) || { echo "$out" >&2; log "do $2: FAILED $out"; exit 1; }
+  echo "$out"
+  log "do $2: $out"
+  ;;
+
+shot)
+  label="${2:?usage: mr-verify shot <label>}"
+  herdr-app shot "$run/$label.png" >/dev/null
+  if [ "$os" = windows ]; then
+    crop() { powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$(cygpath -w "$here/crop.ps1")" "$@" | tr -d '
+'; }
+    h=$(crop "$(cygpath -w "$run/$label.png")")
+    set -- $(block_rect "$h")
+    crop "$(cygpath -w "$run/$label.png")" "$(cygpath -w "$run/$label.block.png")" "$1" "$2" "$3" "$4" >/dev/null
+  else
+    h=$(/usr/bin/sips -g pixelHeight "$run/$label.png" | awk '/pixelHeight/{print $2}')
+    set -- $(block_rect "$h")
+    /usr/bin/osascript -l JavaScript "$here/crop.js" "$run/$label.png" "$run/$label.block.png" "$1" "$2" "$3" "$4" >/dev/null
+  fi
+  echo "$run/$label.png"
+  echo "$run/$label.block.png"
+  log "shot $label: $label.png, $label.block.png"
+  ;;
+
+sidebar)
+  px="${2:?usage: mr-verify sidebar <px>}"
+  # remember the width before the first resize of this run, for cleanup
+  [ -f "$run/.sidebar-orig" ] || sidebar_px > "$run/.sidebar-orig"
+  herdr-app do layout.resize --id sidebar --px "$px"
+  log "sidebar -> ${px}px"
+  ;;
+
+log)
+  shift; log "$*"
+  ;;
+
+cleanup)
+  if [ -f "$run/.sidebar-orig" ]; then
+    herdr-app do layout.resize --id sidebar --px "$(cat "$run/.sidebar-orig")" >/dev/null
+    log "cleanup: sidebar back to $(cat "$run/.sidebar-orig")px"
+    rm -f "$run/.sidebar-orig"
+  fi
+  rm -rf "$scratch"
+  log "cleanup: scratch art removed"
+  rm -f "$root/current"
+  echo "evidence kept: $run"
+  ls "$run"
+  ;;
+
+run-dir) echo "$run" ;;
+
+*)
+  sed -n '2,22p' "$0" | sed 's/^# \{0,1\}//'
+  exit 2
+  ;;
+esac

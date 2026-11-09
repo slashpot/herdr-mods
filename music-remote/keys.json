@@ -1,0 +1,9 @@
+{
+  "global": {
+    "cmd-alt-p": "music-remote.toggle",
+    "cmd-alt-.": "music-remote.next",
+    "cmd-alt-,": "music-remote.previous",
+    "cmd-alt-s": "music-remote.cycle",
+    "cmd-alt-l": "music-remote.sessions"
+  }
+}
