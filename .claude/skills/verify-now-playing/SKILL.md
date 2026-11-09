@@ -100,6 +100,7 @@ It kills nothing. Never `pkill herdr*`, never quit Music/Spotify. The mod's own 
 
 - `scripts/np-verify`: the commands above (POSIX sh + system python3/osascript; no Homebrew needed).
 - `scripts/marquee-motion`: samples window shots and prints the marquee text's position over time.
+- `scripts/security-check`: the checks in features/security.md (exec, AppleScript, PowerShell, artwork paths, install scope, no network, no tracked binaries). Read-only; exit 0 when all pass.
 - `scripts/list-toggle`: presses `sessions` through `herdr-app do` and counts open lists after each press.
 - `scripts/crop.js`: JXA PNG crop used by `shot` on macOS (`osascript -l JavaScript crop.js <src> <out> <x> <y> <w> <h>`). `sips -c` ignores the offset on macOS 27, so don't use it.
 - `scripts/crop.ps1`: the same crop on Windows, and with only `<src>` it prints the image height.

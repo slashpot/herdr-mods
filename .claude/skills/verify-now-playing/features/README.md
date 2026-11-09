@@ -36,3 +36,4 @@ Each feature file has an H1, one paragraph of user-visible behavior, then exactl
 - [Marquee](./marquee.md) — long titles and subtitles scroll instead of truncating.
 - [Hotkeys](./hotkeys.md) — keys.json bindings, the install merge, and `herdr-app do now-playing.<command>`.
 - [Sessions](./sessions.md) — every app with a session, the read-only list popup, cycling and targeting one.
+- [Security](./security.md) — values other apps control never choose a program, script or file path; run `scripts/security-check`.
