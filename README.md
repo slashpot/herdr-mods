@@ -14,7 +14,19 @@ Version 0.9.0. Runs on macOS 15.4 or later and on Windows 11.
 
 ### Install
 
-Ask your agent to add the mod from the gallery, or install it from a clone:
+Give your agent (Claude Code, Codex and the like) this prompt:
+
+```
+Read ~/.config/herdr-app/AGENTS.md, then add this mod: https://github.com/slashpot/herdr-mods/tree/main/music-remote
+```
+
+To update later, give it this one:
+
+```
+Read ~/.config/herdr-app/AGENTS.md, then update the music-remote mod to the latest https://github.com/slashpot/herdr-mods/tree/main/music-remote
+```
+
+Or install it from a clone yourself:
 
 ```sh
 git clone https://github.com/slashpot/herdr-mods.git
